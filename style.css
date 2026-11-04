@@ -13,3 +13,13 @@
 
 /* Identidade CuidaGeri aprovada - v1.6 */
 .headerLogoIcon{display:block;width:47px;height:47px;object-fit:contain;background:#fff;border-radius:13px;padding:3px;flex-shrink:0}.authLogo{display:block;width:min(100%,340px);height:auto;margin:0 auto 17px}.authCard #loginView>h1,.authCard #registerView>h1{text-align:center}.authCard #loginView>.muted,.authCard #registerView>.muted:first-of-type{text-align:center}.head{gap:13px}
+
+/* Gestão de acessos v1.7 */
+.accessIntro{border:1px solid #dce9f5;border-radius:14px;background:#f6fafd;padding:16px;margin:16px 0 22px}.accessIntro h3{margin:0}.accessIntro .muted{margin:5px 0}.accessIntro form>button{margin-top:12px}.dangerBtn{background:#fff0ef;color:#a23436;border:1px solid #edc4c4;padding:9px 12px}.removedAccounts{border-top:1px solid #e2eaf2;margin-top:24px;padding-top:13px}.removedAccounts summary{cursor:pointer;font-weight:600;color:#526e85}.accessIntro label{margin-top:9px}@media(max-width:600px){.accessIntro{padding:12px}}
+
+.inviteOutput{margin-top:16px;padding:16px;border:1px solid #cddfed;border-radius:12px;background:#f3f8fc}.inviteOutput textarea{width:100%;resize:vertical;margin:8px 0;font:13px/1.5 inherit}.inviteOutput h4{margin:0 0 8px}
+
+[hidden]{display:none!important}
+
+/* CuidaGeri 2.0 - instalação e convites */
+.headerActions{display:flex;align-items:center;gap:8px}.installButton{display:block;margin:14px auto 2px}.installHelp{position:fixed;inset:0;z-index:999;background:#081a2a99;display:flex;align-items:center;justify-content:center;padding:16px}.installHelpCard{width:min(100%,470px);background:#fff;border-radius:18px;padding:26px;box-shadow:0 12px 48px #0004}.installHelpCard h2{font-size:22px;margin:10px 0}.installHelpCard p{line-height:1.65}.installClose{float:right}.headerActions .installApp{white-space:nowrap}@media(max-width:500px){.headerActions{flex-wrap:wrap;justify-content:flex-end}.headerActions .installApp{font-size:11px;padding:8px}.topline{align-items:flex-start}}

@@ -85,7 +85,7 @@ renderAvulsas();
 $('financeList').innerHTML=active.filter(s=>s.caregiver_type!=='avulsa').map(s=>`<div class="record"><div class="recordHead"><span>${esc(s.caregiver_name)} · ${esc(s.work_date)}</span><span>${money(Math.max(0,total(s)-paid(s.id)))}</span></div><div class="recordMeta">Devido: ${money(total(s))} · Pago: ${money(paid(s.id))} · ${esc(s.environment)}</div><div class="rowActions">${total(s)-paid(s.id)>0.005?`<button class="small" data-action="payment" data-id="${esc(s.id)}">Registrar pagamento</button>`:"Quitado"}</div></div>`).join('')||'<p class="muted">Sem plantões aprovados.</p>';
 $('accessList').innerHTML=profiles.filter(p=>!p.access_removed_at).map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name||'(sem nome)')}</span><span class="pill ${p.approved?'approved':''}">${p.approved?'Liberado':'Aguardando liberação'}</span></div><div class="recordMeta">${esc(p.role==='admin'?'Administradora':'Cuidadora')} · ${esc(p.id===session.user.id?'Sua conta':(p.email||'Conta vinculada'))}</div>${p.id!==session.user.id?`<div class="rowActions"><button data-action="access" data-id="${esc(p.id)}" data-value="${p.approved?'false':'true'}" class="${p.approved?'light':''}">${p.approved?'Suspender':'Liberar'}</button><button class="dangerBtn" data-action="remove-access" data-id="${esc(p.id)}" data-name="${esc(p.display_name)}">Excluir acesso</button></div>`:'<small class="muted">Sua conta administradora não pode ser excluída por este painel.</small>'}</div>`).join('')||'<p class="muted">Nenhuma conta cadastrada.</p>';
 $('removedAccessList').innerHTML=profiles.filter(p=>p.access_removed_at).map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name||'(sem nome)')}</span><span class="pill rejected">Acesso removido</span></div><div class="recordMeta">Histórico preservado · ${esc(p.access_removed_at?.slice(0,10)||'')}</div><div class="rowActions"><button class="light small" data-action="restore-access" data-id="${esc(p.id)}">Restaurar acesso</button></div></div>`).join('')||'<p class="muted">Nenhum acesso removido.</p>';
-$('invitedList').innerHTML=invitedPeople.filter(p=>p.status==='pending').map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name)}</span><span class="pill">Aguardando ativação</span></div><div class="recordMeta">${esc(p.phone_e164)} · Válido até ${esc(new Date(p.expires_at).toLocaleString('pt-BR'))}</div><div class="rowActions"><button class="dangerBtn small" data-action="cancel-invite" data-id="${esc(p.id)}">Cancelar convite</button></div></div>`).join('')||'<p class="muted">Nenhum convite pendente.</p>';
+$('invitedList').innerHTML=invitedPeople.filter(p=>p.status==='pending').map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name)}</span><span class="pill">Aguardando ativação</span></div><div class="recordMeta">${esc(p.phone_e164)} · Válido até ${esc(new Date(p.expires_at).toLocaleString('pt-BR'))}</div><div class="rowActions"><button class="small" data-action="reissue-invite" data-id="${esc(p.id)}">Gerar novo link</button><button class="dangerBtn small" data-action="cancel-invite" data-id="${esc(p.id)}">Cancelar convite</button></div></div>`).join('')||'<p class="muted">Nenhum convite pendente.</p>';
 }
 async function boot(){const {data,error}=await db.auth.getSession();if(error)throw error;session=data.session;
  if(inviteToken()){
@@ -112,6 +112,12 @@ $('invitePasswordForm').addEventListener('submit',working(async()=>{
  notice('Acesso ativado. Bem-vinda ao CuidaGeri!');await boot();
 }));
 $('copyGeneratedInvite').addEventListener('click',working(async()=>{await navigator.clipboard.writeText($('generatedInviteText').value);notice('Convite copiado.');}));
+function showInvitation(name,phone,url){
+ $('generatedInvite').hidden=false;
+ $('generatedInviteText').dataset.phone=phone;
+ $('generatedInviteText').value=`Olá, ${name}! Você foi convidada para o CuidaGeri. Abra o seu link individual para criar uma senha e acessar seus plantões:\n${url}\nO link expira em 48 horas e funciona uma única vez. Não encaminhe.`;
+ $('generatedInvite').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
 $('shareGeneratedInvite').addEventListener('click',()=>{const text=$('generatedInviteText').value,phone=$('generatedInviteText').dataset.phone;if(text&&phone)window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(text),'_blank','noopener,noreferrer');});
 $('loginMethod').addEventListener('change',()=>{$('loginEmailField').hidden=$('loginMethod').value==='phone';$('loginPhoneField').hidden=$('loginMethod').value!=='phone'});
 $('authForm').addEventListener('submit',working(async()=>{let input; if($('loginMethod').value==='phone'){const phone=phoneBR($('loginPhone').value);if(!phone)throw Error('Informe o WhatsApp com DDD.');input={phone,password:$('password').value}}else{input={email:$('email').value.trim(),password:$('password').value}}const {error}=await db.auth.signInWithPassword(input);if(error)throw Error('Telefone/e-mail ou senha incorretos.');await boot()}));
@@ -134,7 +140,7 @@ $('inviteCaregiverForm').addEventListener('submit',working(async()=>{
  const data=await inviteRequest('create',{name,phone,appUrl:location.origin},auth.session?.access_token);
  $('generatedInvite').hidden=false;
  $('generatedInviteText').dataset.phone=phone;
- $('generatedInviteText').value=`Olá, ${name}! Você foi convidada para o CuidaGeri. Abra o seu link individual para criar uma senha e acessar os plantões:\n${data.inviteLink}\nO link expira em 48 horas e funciona uma única vez. Não encaminhe.`;
+ showInvitation(name,phone,data.inviteLink);
  $('inviteCaregiverForm').reset();notice('Convite criado. Compartilhe pelo WhatsApp.');await refresh();
 }));
 $('accessList').addEventListener('click',working(async ev=>{
@@ -158,10 +164,20 @@ $('removedAccessList').addEventListener('click',working(async ev=>{
  await refresh();notice('Acesso restaurado.');
 }));
 $('invitedList').addEventListener('click',working(async ev=>{
- const b=ev.target.closest('button[data-action="cancel-invite"]');if(!b||!isAdmin())return;
- if(!confirm('Cancelar este convite? O link não poderá mais ativar acesso.'))return;
- const {data:auth}=await db.auth.getSession();await inviteRequest('cancel',{inviteId:b.dataset.id},auth.session?.access_token);
- await refresh();notice('Convite cancelado.');
+ const b=ev.target.closest('button[data-action]');if(!b||!isAdmin())return;
+ const row=invitedPeople.find(p=>p.id===b.dataset.id && p.status==='pending');
+ if(!row)return;
+ if(b.dataset.action==='reissue-invite'){
+   if(!confirm('Gerar um novo convite para '+row.display_name+'? O link anterior será invalidado.'))return;
+   const {data:auth}=await db.auth.getSession();
+   const data=await inviteRequest('reissue',{inviteId:row.id,appUrl:location.origin},auth.session?.access_token);
+   showInvitation(row.display_name,row.phone_e164,data.inviteLink);
+   await refresh();notice('Novo link criado. Copie ou envie pelo WhatsApp; o anterior não funciona mais.');
+ }else if(b.dataset.action==='cancel-invite'){
+   if(!confirm('Cancelar este convite? O link não poderá mais ativar acesso.'))return;
+   const {data:auth}=await db.auth.getSession();await inviteRequest('cancel',{inviteId:b.dataset.id},auth.session?.access_token);
+   await refresh();notice('Convite cancelado.');
+ }
 }));
 $('exportBtn').addEventListener('click',()=>{if(!isAdmin())return notice('Acesso exclusivo da administração.');csvExport('plantoes.csv',shifts.map(s=>({data:s.work_date,cuidadora:s.caregiver_name,paciente:patients.find(p=>p.id===s.patient_id)?.name||'',ambiente:s.environment,jornada:s.shift_hours,tipo:s.shift_kind,modalidade:caregiverTypeLabel(s.caregiver_type),situacao:statusLabel(s.status),observacoes:s.notes})));});
 $('financeMonth').addEventListener('change',()=>renderAvulsas());
@@ -205,3 +221,26 @@ function dashboardCurrentMonth(){const now=new Date();const y=now.getFullYear(),
 dashboardCurrentMonth();
 ['dashboardStart','dashboardEnd','dashboardCaregiver','dashboardPatient'].forEach(id=>$(id).addEventListener('change',()=>{if($('dashboardStart').value&&$('dashboardEnd').value&&$('dashboardStart').value>$('dashboardEnd').value)return notice('A data inicial não pode ser posterior à final.');renderDashboard()}));
 $('dashboardClear').addEventListener('click',()=>{ $('dashboardCaregiver').value='';$('dashboardPatient').value='';dashboardCurrentMonth()});
+
+// Instalação PWA: o navegador decide quando permite apresentar o convite.
+let pendingInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();pendingInstallPrompt=event;});
+window.addEventListener('appinstalled',()=>{pendingInstallPrompt=null;notice('CuidaGeri instalado na tela inicial.');});
+function showInstallHelp(){
+ const ios=/iPad|iPhone|iPod/.test(navigator.userAgent);
+ const android=/Android/i.test(navigator.userAgent);
+ const msg=ios
+ ? 'No iPhone, abra o CuidaGeri no Safari, toque no botão Compartilhar (quadrado com seta para cima), escolha “Adicionar à Tela de Início” e confirme. Se estiver no Chrome, use “Abrir no Safari” primeiro.'
+ :android
+ ? 'No Android, abra no Chrome ou Edge, toque no menu ⋮ e escolha “Instalar aplicativo” ou “Adicionar à tela inicial”. Confirme para criar o ícone.'
+ : 'No computador, use o botão de instalação na barra do navegador, se disponível. No celular, abra este endereço no Chrome (Android) ou Safari (iPhone) e adicione à tela inicial.';
+ $('installHelpText').textContent=msg;$('installHelp').hidden=false;
+}
+for(const btn of document.querySelectorAll('.installApp'))btn.addEventListener('click',async()=>{
+ if(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true){notice('O CuidaGeri já está aberto como aplicativo.');return;}
+ if(pendingInstallPrompt){const p=pendingInstallPrompt;pendingInstallPrompt=null;await p.prompt();return;}
+ showInstallHelp();
+});
+$('closeInstallHelp').addEventListener('click',()=>{$('installHelp').hidden=true});
+$('installHelp').addEventListener('click',e=>{if(e.target===$('installHelp'))$('installHelp').hidden=true});
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));}
