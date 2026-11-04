@@ -115,7 +115,14 @@ $('invitePasswordForm').addEventListener('submit',working(async()=>{
  if(password.length<6||password!==$('invitePasswordConfirm').value)throw Error('Use no mínimo 6 caracteres e confirme a senha.');
  // A ativação e o login são duas operações distintas. O token é consumido
  // com sucesso pela Edge Function; falha no login NÃO significa falha na ativação.
- const data=await inviteRequest('redeem',{token:inviteToken(),password});
+ 
+const data = await inviteRequest('redeem', {
+  token: inviteToken(),
+  name: $('inviteNameConfirm').value.trim(),
+  phone: $('invitePhoneConfirm').value.trim(),
+  password
+});
+
  $('invitePassword').value='';$('invitePasswordConfirm').value='';
  history.replaceState(null,'',location.pathname);
  const {error}=await db.auth.signInWithPassword({email:caregiverAuthEmail(data.phone),password});
