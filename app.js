@@ -2,8 +2,12 @@ import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 const cfg=window.APP_CONFIG||{};
 const ok=cfg.supabaseUrl?.startsWith('https://') && cfg.supabaseAnonKey && !cfg.supabaseAnonKey.startsWith('COLE_');
 const $=id=>document.getElementById(id), money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let db,profile,session,patients=[],shifts=[],payments=[],profiles=[];
-const isAdmin=()=>profile?.role==='admin'&&profile?.approved===true;
+let db,profile,session,patients=[],shifts=[],payments=[],profiles=[],invitedPeople=[];
+const isAdmin=()=>profile?.role==='admin'&&profile?.approved===true&&!profile?.access_removed_at;
+const inviteToken=()=>new URLSearchParams(location.search).get('convite')||'';
+const phoneBR=s=>{let n=String(s||'').replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);if(!n.startsWith('55'))n='55'+n;return /^55\d{10,11}$/.test(n)?'+'+n:null};
+const INVOKE='cuidageri-convites';
+async function inviteRequest(action,payload={},authorization){const headers={'Content-Type':'application/json','apikey':cfg.supabaseAnonKey};if(authorization)headers.Authorization='Bearer '+authorization;const r=await fetch(cfg.supabaseUrl+'/functions/v1/'+INVOKE,{method:'POST',headers,body:JSON.stringify({action,...payload})});const data=await r.json().catch(()=>({}));if(!r.ok||data.error)throw Error(data.error||'Não foi possível completar a operação.');return data;}
 function notice(message){$('notice').textContent=message;$('notice').style.display='block';setTimeout(()=>$('notice').style.display='none',4500)}
 function fail(e){notice(e?.message||String(e))}
 function working(fn){return async ev=>{try{ev?.preventDefault?.();await fn(ev)}catch(e){fail(e)}}}
@@ -13,7 +17,7 @@ const total=s=>Number(s.rate||0)+Number(s.transport||0)+Number(s.meals||0)+Numbe
 const paid=id=>payments.filter(p=>p.shift_id===id).reduce((t,p)=>t+Number(p.amount),0);
 function parseCSVLine(line){const out=[];let cur='',quote=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++}else quote=!quote}else if(c===','&&!quote){out.push(cur);cur=''}else cur+=c}out.push(cur);return out}
 function csvExport(filename,rows){if(!rows.length)return notice('Não há registros para exportar.');const keys=Object.keys(rows[0]);const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const content='\uFEFF'+keys.join(';')+'\r\n'+rows.map(r=>keys.map(k=>cell(r[k])).join(';')).join('\r\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
-async function refresh(){const admin=isAdmin();const queries=[db.from('care_patients').select('*').eq('active',true).order('name'),db.from('care_shifts').select(admin?'*':'id,caregiver_id,work_date,patient_id,status').order('work_date',{ascending:false}).limit(1000)];if(admin)queries.push(db.from('care_payments').select('*'),db.from('care_profiles').select('*').order('display_name'));const results=await Promise.all(queries);for(const x of results)if(x.error)throw x.error;patients=results[0].data;shifts=results[1].data||[];payments=admin?(results[2].data||[]):[];profiles=admin?(results[3].data||[]):[];$('patient').innerHTML=patients.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');render()}
+async function refresh(){const admin=isAdmin();const queries=[db.from('care_patients').select('*').eq('active',true).order('name'),db.from('care_shifts').select(admin?'*':'id,caregiver_id,work_date,patient_id,status').order('work_date',{ascending:false}).limit(1000)];if(admin)queries.push(db.from('care_payments').select('*'),db.from('care_profiles').select('*').order('display_name'),db.from('care_phone_invites').select('id,display_name,phone_e164,status,expires_at,created_at').order('created_at',{ascending:false}));const results=await Promise.all(queries);for(const x of results)if(x.error)throw x.error;patients=results[0].data;shifts=results[1].data||[];payments=admin?(results[2].data||[]):[];profiles=admin?(results[3].data||[]):[];invitedPeople=admin?(results[4].data||[]):[];$('patient').innerHTML=patients.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');render()}
 // Tarifas iniciais sugeridas somente no painel administrativo. A aprovadora pode editá-las.
 function suggestedRate(s){
   if(s.caregiver_type!=='avulsa')return Number(s.rate||0);
@@ -79,8 +83,18 @@ const active=shifts.filter(s=>s.status==='approved');const due=active.reduce((t,
 $('financeSummary').innerHTML=`<div class="stat"><small>Valor aprovado</small><b>${money(due)}</b></div><div class="stat"><small>Registrado como pago</small><b>${money(transferred)}</b></div><div class="stat"><small>Saldo aprovado</small><b>${money(due-transferred)}</b></div>`;
 renderAvulsas();
 $('financeList').innerHTML=active.filter(s=>s.caregiver_type!=='avulsa').map(s=>`<div class="record"><div class="recordHead"><span>${esc(s.caregiver_name)} · ${esc(s.work_date)}</span><span>${money(Math.max(0,total(s)-paid(s.id)))}</span></div><div class="recordMeta">Devido: ${money(total(s))} · Pago: ${money(paid(s.id))} · ${esc(s.environment)}</div><div class="rowActions">${total(s)-paid(s.id)>0.005?`<button class="small" data-action="payment" data-id="${esc(s.id)}">Registrar pagamento</button>`:"Quitado"}</div></div>`).join('')||'<p class="muted">Sem plantões aprovados.</p>';
-$('accessList').innerHTML=profiles.map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name||'(sem nome)')}</span><span class="pill ${p.approved?'approved':''}">${p.approved?'Liberado':'Pendente'}</span></div><div class="recordMeta">${esc(p.role)} · ID: ${esc(p.id)}</div>${p.id!==session.user.id?`<div class="rowActions"><button data-action="access" data-id="${esc(p.id)}" data-value="${p.approved?'false':'true'}">${p.approved?'Suspender':'Liberar'}</button></div>`:''}</div>`).join('')}
-async function boot(){const {data,error}=await db.auth.getSession();if(error)throw error;session=data.session;$('auth').hidden=!!session;$('app').hidden=!session;if(!session)return;
+$('accessList').innerHTML=profiles.filter(p=>!p.access_removed_at).map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name||'(sem nome)')}</span><span class="pill ${p.approved?'approved':''}">${p.approved?'Liberado':'Aguardando liberação'}</span></div><div class="recordMeta">${esc(p.role==='admin'?'Administradora':'Cuidadora')} · ${esc(p.id===session.user.id?'Sua conta':(p.email||'Conta vinculada'))}</div>${p.id!==session.user.id?`<div class="rowActions"><button data-action="access" data-id="${esc(p.id)}" data-value="${p.approved?'false':'true'}" class="${p.approved?'light':''}">${p.approved?'Suspender':'Liberar'}</button><button class="dangerBtn" data-action="remove-access" data-id="${esc(p.id)}" data-name="${esc(p.display_name)}">Excluir acesso</button></div>`:'<small class="muted">Sua conta administradora não pode ser excluída por este painel.</small>'}</div>`).join('')||'<p class="muted">Nenhuma conta cadastrada.</p>';
+$('removedAccessList').innerHTML=profiles.filter(p=>p.access_removed_at).map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name||'(sem nome)')}</span><span class="pill rejected">Acesso removido</span></div><div class="recordMeta">Histórico preservado · ${esc(p.access_removed_at?.slice(0,10)||'')}</div><div class="rowActions"><button class="light small" data-action="restore-access" data-id="${esc(p.id)}">Restaurar acesso</button></div></div>`).join('')||'<p class="muted">Nenhum acesso removido.</p>';
+$('invitedList').innerHTML=invitedPeople.filter(p=>p.status==='pending').map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name)}</span><span class="pill">Aguardando ativação</span></div><div class="recordMeta">${esc(p.phone_e164)} · Válido até ${esc(new Date(p.expires_at).toLocaleString('pt-BR'))}</div><div class="rowActions"><button class="dangerBtn small" data-action="cancel-invite" data-id="${esc(p.id)}">Cancelar convite</button></div></div>`).join('')||'<p class="muted">Nenhum convite pendente.</p>';
+}
+async function boot(){const {data,error}=await db.auth.getSession();if(error)throw error;session=data.session;
+ if(inviteToken()){
+   $('setup').hidden=true;$('auth').hidden=false;$('app').hidden=true;
+   $('loginView').hidden=true;$('registerView').hidden=true;$('invitePasswordView').hidden=false;
+   $('invitePasswordHelp').textContent='Este convite é pessoal, de uso único e válido por 48 horas. Defina sua senha para ativar o acesso.';
+   return;
+ }
+ $('invitePasswordView').hidden=true;$('auth').hidden=!!session;$('app').hidden=!session;if(!session)return;
 const {data:p,error:e}=await db.from('care_profiles').select('*').eq('id',session.user.id).single();if(e)throw e;profile=p;$('welcome').textContent=`Olá, ${p.display_name||'cuidadora'}!`;$('roleBadge').hidden=false;$('roleBadge').textContent=p.role==='admin'?'Administração':'Cuidadora';$('accessInfo').textContent=p.role==='admin'?'Confira e aprove os plantões enviados.':'Registre seus próprios plantões para conferência.';$('pendingAccess').hidden=p.approved;$('authorized').hidden=!p.approved;
 if(p.approved){document.querySelectorAll('.adminOnly').forEach(el=>el.hidden=p.role!=='admin');document.querySelectorAll('.caregiverOnly').forEach(el=>el.hidden=p.role==='admin');showTab(p.role==='admin'?'dashboard':'new');$('monthHistory').hidden=true;$('monthHistory').innerHTML='';await refresh()}}
 function showTab(id){if(id!=='closeMonth'){$('monthHistory').innerHTML='';$('monthHistory').hidden=true;}document.querySelectorAll('.pane').forEach(el=>el.hidden=el.id!==id);document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===id))}
@@ -89,7 +103,18 @@ if(!ok){$('setup').hidden=false;$('auth').hidden=true}else{
  db.auth.onAuthStateChange(()=>setTimeout(()=>boot().catch(fail),0));
  boot().catch(fail);
 }
-$('authForm').addEventListener('submit',working(async()=>{const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;await boot()}));
+$('invitePasswordForm').addEventListener('submit',working(async()=>{
+ const password=$('invitePassword').value;
+ if(password.length<10||password!==$('invitePasswordConfirm').value)throw Error('Use no mínimo 10 caracteres e confirme a senha.');
+ const data=await inviteRequest('redeem',{token:inviteToken(),password});
+ const {error}=await db.auth.signInWithPassword({phone:data.phone,password});if(error)throw Error('Conta ativada, mas não foi possível entrar. Use WhatsApp e a senha criada.');
+ $('invitePassword').value='';$('invitePasswordConfirm').value='';history.replaceState(null,'',location.pathname);
+ notice('Acesso ativado. Bem-vinda ao CuidaGeri!');await boot();
+}));
+$('copyGeneratedInvite').addEventListener('click',working(async()=>{await navigator.clipboard.writeText($('generatedInviteText').value);notice('Convite copiado.');}));
+$('shareGeneratedInvite').addEventListener('click',()=>{const text=$('generatedInviteText').value,phone=$('generatedInviteText').dataset.phone;if(text&&phone)window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(text),'_blank','noopener,noreferrer');});
+$('loginMethod').addEventListener('change',()=>{$('loginEmailField').hidden=$('loginMethod').value==='phone';$('loginPhoneField').hidden=$('loginMethod').value!=='phone'});
+$('authForm').addEventListener('submit',working(async()=>{let input; if($('loginMethod').value==='phone'){const phone=phoneBR($('loginPhone').value);if(!phone)throw Error('Informe o WhatsApp com DDD.');input={phone,password:$('password').value}}else{input={email:$('email').value.trim(),password:$('password').value}}const {error}=await db.auth.signInWithPassword(input);if(error)throw Error('Telefone/e-mail ou senha incorretos.');await boot()}));
 $('showRegister').addEventListener('click',()=>{$('loginView').hidden=true;$('registerView').hidden=false;$('registerEmail').value=$('email').value.trim();});
 $('showLogin').addEventListener('click',()=>{$('registerView').hidden=true;$('loginView').hidden=false;$('password').value='';});
 $('registerForm').addEventListener('submit',working(async()=>{const name=$('displayName').value.trim();if(!name)throw Error('Informe seu nome.');const {error}=await db.auth.signUp({email:$('registerEmail').value.trim(),password:$('registerPassword').value,options:{data:{display_name:name}}});if(error)throw error;$('registerPassword').value='';notice('Cadastro solicitado. Confira seu e-mail e aguarde liberação.');$('showLogin').click()}));
@@ -101,7 +126,43 @@ $('reviewList').addEventListener('click',working(async ev=>{const b=ev.target.cl
 async function paymentHandler(ev){const b=ev.target.closest('button[data-action="payment"]');if(!b)return;const s=shifts.find(x=>x.id===b.dataset.id);const remaining=total(s)-paid(s.id);if(remaining<=0.005)throw Error('Plantão já quitado.');const raw=prompt('Valor efetivamente transferido (R$):',String(Math.max(0,remaining).toFixed(2)));if(raw===null)return;const amount=Number(raw.replace(',','.'));if(!Number.isFinite(amount)||amount<=0||amount>remaining+0.001)throw Error('Valor maior que o saldo ou inválido.');const date=prompt('Data do pagamento (AAAA-MM-DD):',new Date().toISOString().slice(0,10));if(!date)return;const ref=prompt('Referência do Pix/comprovante (opcional):','')??'';if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw Error('Data inválida.');const {error}=await db.from('care_payments').insert({shift_id:s.id,amount,paid_on:date,reference:ref,created_by:session.user.id});if(error)throw error;notice('Pagamento registrado.');await refresh()}
 $('financeList').addEventListener('click',working(paymentHandler));
 $('casualSummary').addEventListener('click',working(paymentHandler));
-$('accessList').addEventListener('click',working(async ev=>{const b=ev.target.closest('button[data-action="access"]');if(!b)return;if(!confirm('Alterar acesso desta pessoa?'))return;const {error}=await db.from('care_profiles').update({approved:b.dataset.value==='true'}).eq('id',b.dataset.id);if(error)throw error;await refresh()}));
+$('inviteCaregiverForm').addEventListener('submit',working(async()=>{
+ if(!isAdmin())throw Error('Somente a administração pode convidar cuidadoras.');
+ const name=$('inviteName').value.trim(),phone=phoneBR($('invitePhone').value);
+ if(name.length<2||!phone)throw Error('Informe nome e WhatsApp válido com DDD.');
+ const {data:auth}=await db.auth.getSession();
+ const data=await inviteRequest('create',{name,phone,appUrl:location.origin},auth.session?.access_token);
+ $('generatedInvite').hidden=false;
+ $('generatedInviteText').dataset.phone=phone;
+ $('generatedInviteText').value=`Olá, ${name}! Você foi convidada para o CuidaGeri. Abra o seu link individual para criar uma senha e acessar os plantões:\n${data.inviteLink}\nO link expira em 48 horas e funciona uma única vez. Não encaminhe.`;
+ $('inviteCaregiverForm').reset();notice('Convite criado. Compartilhe pelo WhatsApp.');await refresh();
+}));
+$('accessList').addEventListener('click',working(async ev=>{
+ const b=ev.target.closest('button[data-action]');if(!b||!isAdmin())return;
+ if(b.dataset.id===session.user.id)throw Error('Você não pode modificar seu próprio acesso.');
+ let values;
+ if(b.dataset.action==='access'){
+   if(!confirm(b.dataset.value==='true'?'Liberar esta conta?':'Suspender o acesso desta conta?'))return;
+   values={approved:b.dataset.value==='true'};
+ }else if(b.dataset.action==='remove-access'){
+   if(!confirm(`Excluir o acesso de ${b.dataset.name||'esta pessoa'}? A conta não poderá utilizar o sistema e os registros financeiros serão preservados.`))return;
+   values={approved:false,access_removed_at:new Date().toISOString()};
+ }else return;
+ const {error}=await db.from('care_profiles').update(values).eq('id',b.dataset.id).eq('role','caregiver');
+ if(error)throw error;await refresh();notice('Acesso atualizado.');
+}));
+$('removedAccessList').addEventListener('click',working(async ev=>{
+ const b=ev.target.closest('button[data-action="restore-access"]');if(!b||!isAdmin())return;
+ if(!confirm('Restaurar o acesso desta cuidadora?'))return;
+ const {error}=await db.from('care_profiles').update({access_removed_at:null,approved:true}).eq('id',b.dataset.id).eq('role','caregiver');if(error)throw error;
+ await refresh();notice('Acesso restaurado.');
+}));
+$('invitedList').addEventListener('click',working(async ev=>{
+ const b=ev.target.closest('button[data-action="cancel-invite"]');if(!b||!isAdmin())return;
+ if(!confirm('Cancelar este convite? O link não poderá mais ativar acesso.'))return;
+ const {data:auth}=await db.auth.getSession();await inviteRequest('cancel',{inviteId:b.dataset.id},auth.session?.access_token);
+ await refresh();notice('Convite cancelado.');
+}));
 $('exportBtn').addEventListener('click',()=>{if(!isAdmin())return notice('Acesso exclusivo da administração.');csvExport('plantoes.csv',shifts.map(s=>({data:s.work_date,cuidadora:s.caregiver_name,paciente:patients.find(p=>p.id===s.patient_id)?.name||'',ambiente:s.environment,jornada:s.shift_hours,tipo:s.shift_kind,modalidade:caregiverTypeLabel(s.caregiver_type),situacao:statusLabel(s.status),observacoes:s.notes})));});
 $('financeMonth').addEventListener('change',()=>renderAvulsas());
 $('financeCaregiver').addEventListener('change',()=>renderAvulsas());
