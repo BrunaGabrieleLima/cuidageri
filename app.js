@@ -54,12 +54,14 @@ const {data:p,error:e}=await db.from('care_profiles').select('*').eq('id',sessio
 if(p.approved){document.querySelectorAll('.adminOnly').forEach(el=>el.hidden=p.role!=='admin');await refresh()}}
 function showTab(id){document.querySelectorAll('.pane').forEach(el=>el.hidden=el.id!==id);document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===id))}
 if(!ok){$('setup').hidden=false;$('auth').hidden=true}else{
- db=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey);
+ db=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:'cuidageri-auth'}});
  db.auth.onAuthStateChange(()=>setTimeout(()=>boot().catch(fail),0));
  boot().catch(fail);
 }
 $('authForm').addEventListener('submit',working(async()=>{const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;await boot()}));
-$('registerBtn').addEventListener('click',working(async()=>{const name=$('displayName').value.trim();if(!name)throw Error('Informe seu nome.');const {error}=await db.auth.signUp({email:$('email').value.trim(),password:$('password').value,options:{data:{display_name:name}}});if(error)throw error;notice('Cadastro solicitado. Confira seu e-mail e aguarde liberação.') }));
+$('showRegister').addEventListener('click',()=>{$('loginView').hidden=true;$('registerView').hidden=false;$('registerEmail').value=$('email').value.trim();});
+$('showLogin').addEventListener('click',()=>{$('registerView').hidden=true;$('loginView').hidden=false;$('password').value='';});
+$('registerForm').addEventListener('submit',working(async()=>{const name=$('displayName').value.trim();if(!name)throw Error('Informe seu nome.');const {error}=await db.auth.signUp({email:$('registerEmail').value.trim(),password:$('registerPassword').value,options:{data:{display_name:name}}});if(error)throw error;$('registerPassword').value='';notice('Cadastro solicitado. Confira seu e-mail e aguarde liberação.');$('showLogin').click()}));
 $('logoutBtn').addEventListener('click',working(async()=>{await db.auth.signOut();await boot()}));
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 $('workDate').value=new Date().toLocaleDateString('en-CA');
