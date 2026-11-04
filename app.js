@@ -6,6 +6,8 @@ let db,profile,session,patients=[],shifts=[],payments=[],profiles=[],invitedPeop
 const isAdmin=()=>profile?.role==='admin'&&profile?.approved===true&&!profile?.access_removed_at;
 const inviteToken=()=>new URLSearchParams(location.search).get('convite')||'';
 const phoneBR=s=>{let n=String(s||'').replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);if(!n.startsWith('55'))n='55'+n;return /^55\d{10,11}$/.test(n)?'+'+n:null};
+// Identificador técnico do Auth: não é um e-mail pessoal e não deve receber mensagens.
+const caregiverAuthEmail=phone=>phone.replace(/\D/g,'')+'@accounts.cuidageri.example.com';
 const INVOKE='cuidageri-convites';
 async function inviteRequest(action,payload={},authorization){const headers={'Content-Type':'application/json','apikey':cfg.supabaseAnonKey};if(authorization)headers.Authorization='Bearer '+authorization;const r=await fetch(cfg.supabaseUrl+'/functions/v1/'+INVOKE,{method:'POST',headers,body:JSON.stringify({action,...payload})});const data=await r.json().catch(()=>({}));if(!r.ok||data.error)throw Error(data.error||'Não foi possível completar a operação.');return data;}
 function notice(message){$('notice').textContent=message;$('notice').style.display='block';setTimeout(()=>$('notice').style.display='none',4500)}
@@ -103,7 +105,12 @@ if(!ok){$('setup').hidden=false;$('auth').hidden=true}else{
  db.auth.onAuthStateChange(()=>setTimeout(()=>boot().catch(fail),0));
  boot().catch(fail);
 }
+let activatingInvite=false;
 $('invitePasswordForm').addEventListener('submit',working(async()=>{
+ if(activatingInvite)return;
+ activatingInvite=true;
+ const submitButton=$('invitePasswordForm').querySelector('button[type=submit]');submitButton.disabled=true;
+ try{
  const password=$('invitePassword').value;
  if(password.length<6||password!==$('invitePasswordConfirm').value)throw Error('Use no mínimo 6 caracteres e confirme a senha.');
  // A ativação e o login são duas operações distintas. O token é consumido
@@ -111,7 +118,7 @@ $('invitePasswordForm').addEventListener('submit',working(async()=>{
  const data=await inviteRequest('redeem',{token:inviteToken(),password});
  $('invitePassword').value='';$('invitePasswordConfirm').value='';
  history.replaceState(null,'',location.pathname);
- const {error}=await db.auth.signInWithPassword({phone:data.phone,password});
+ const {error}=await db.auth.signInWithPassword({email:caregiverAuthEmail(data.phone),password});
  if(error){
    $('invitePasswordView').hidden=true;
    $('registerView').hidden=true;
@@ -127,6 +134,7 @@ $('invitePasswordForm').addEventListener('submit',working(async()=>{
    return;
  }
  notice('Conta ativada com sucesso!');await boot();
+ }finally{activatingInvite=false;submitButton.disabled=false;}
 }));
 $('copyGeneratedInvite').addEventListener('click',working(async()=>{await navigator.clipboard.writeText($('generatedInviteText').value);notice('Convite copiado.');}));
 function showInvitation(name,phone,url){
@@ -137,7 +145,7 @@ function showInvitation(name,phone,url){
 }
 $('shareGeneratedInvite').addEventListener('click',()=>{const text=$('generatedInviteText').value,phone=$('generatedInviteText').dataset.phone;if(text&&phone)window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(text),'_blank','noopener,noreferrer');});
 $('loginMethod').addEventListener('change',()=>{$('loginEmailField').hidden=$('loginMethod').value==='phone';$('loginPhoneField').hidden=$('loginMethod').value!=='phone'});
-$('authForm').addEventListener('submit',working(async()=>{let input; if($('loginMethod').value==='phone'){const phone=phoneBR($('loginPhone').value);if(!phone)throw Error('Informe o WhatsApp com DDD.');input={phone,password:$('password').value}}else{input={email:$('email').value.trim(),password:$('password').value}}const {error}=await db.auth.signInWithPassword(input);if(error)throw Error('Telefone/e-mail ou senha incorretos.');await boot()}));
+$('authForm').addEventListener('submit',working(async()=>{let input; if($('loginMethod').value==='phone'){const phone=phoneBR($('loginPhone').value);if(!phone)throw Error('Informe o WhatsApp com DDD.');input={email:caregiverAuthEmail(phone),password:$('password').value}}else{input={email:$('email').value.trim(),password:$('password').value}}const {error}=await db.auth.signInWithPassword(input);if(error)throw Error('Telefone/e-mail ou senha incorretos. Se sua conta foi criada antes da atualização, solicite a migração à administração.');await boot()}));
 $('showRegister').addEventListener('click',()=>{$('loginView').hidden=true;$('registerView').hidden=false;$('registerEmail').value=$('email').value.trim();});
 $('showLogin').addEventListener('click',()=>{$('registerView').hidden=true;$('loginView').hidden=false;$('password').value='';});
 $('registerForm').addEventListener('submit',working(async()=>{const name=$('displayName').value.trim();if(!name)throw Error('Informe seu nome.');const {error}=await db.auth.signUp({email:$('registerEmail').value.trim(),password:$('registerPassword').value,options:{data:{display_name:name}}});if(error)throw error;$('registerPassword').value='';notice('Cadastro solicitado. Confira seu e-mail e aguarde liberação.');$('showLogin').click()}));
@@ -179,6 +187,15 @@ $('removedAccessList').addEventListener('click',working(async ev=>{
  if(!confirm('Restaurar o acesso desta cuidadora?'))return;
  const {error}=await db.from('care_profiles').update({access_removed_at:null,approved:true}).eq('id',b.dataset.id).eq('role','caregiver');if(error)throw error;
  await refresh();notice('Acesso restaurado.');
+}));
+$('migratePhoneForm').addEventListener('submit',working(async ev=>{
+ if(!isAdmin())throw Error('Ação exclusiva da administração.');
+ const phone=phoneBR($('migratePhone').value);
+ if(!phone)throw Error('Informe o telefone com DDD.');
+ if(!confirm('Adaptar a autenticação desta conta sem excluir seus registros? Confirme que o número é da cuidadora.'))return;
+ const {data:auth}=await db.auth.getSession();
+ const result=await inviteRequest('migrate-existing',{phone},auth.session?.access_token);
+ $('migratePhoneForm').reset();notice(result.alreadyConfigured?'Conta já adaptada.':'Conta adaptada. Agora entre com o número e a senha que já havia sido definida.');await refresh();
 }));
 $('invitedList').addEventListener('click',working(async ev=>{
  const b=ev.target.closest('button[data-action]');if(!b||!isAdmin())return;
