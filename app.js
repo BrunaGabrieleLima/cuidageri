@@ -105,11 +105,28 @@ if(!ok){$('setup').hidden=false;$('auth').hidden=true}else{
 }
 $('invitePasswordForm').addEventListener('submit',working(async()=>{
  const password=$('invitePassword').value;
- if(password.length<10||password!==$('invitePasswordConfirm').value)throw Error('Use no mínimo 10 caracteres e confirme a senha.');
+ if(password.length<6||password!==$('invitePasswordConfirm').value)throw Error('Use no mínimo 6 caracteres e confirme a senha.');
+ // A ativação e o login são duas operações distintas. O token é consumido
+ // com sucesso pela Edge Function; falha no login NÃO significa falha na ativação.
  const data=await inviteRequest('redeem',{token:inviteToken(),password});
- const {error}=await db.auth.signInWithPassword({phone:data.phone,password});if(error)throw Error('Conta ativada, mas não foi possível entrar. Use WhatsApp e a senha criada.');
- $('invitePassword').value='';$('invitePasswordConfirm').value='';history.replaceState(null,'',location.pathname);
- notice('Acesso ativado. Bem-vinda ao CuidaGeri!');await boot();
+ $('invitePassword').value='';$('invitePasswordConfirm').value='';
+ history.replaceState(null,'',location.pathname);
+ const {error}=await db.auth.signInWithPassword({phone:data.phone,password});
+ if(error){
+   $('invitePasswordView').hidden=true;
+   $('registerView').hidden=true;
+   $('loginView').hidden=false;
+   $('auth').hidden=false;
+   $('app').hidden=true;
+   $('loginMethod').value='phone';
+   $('loginMethod').dispatchEvent(new Event('change'));
+   $('loginPhone').value=data.phone;
+   $('password').value='';
+   $('invitePasswordHelp').textContent='';
+   notice('Conta ativada com sucesso! Entre com seu WhatsApp e a senha criada. Se o acesso falhar, avise a administração.');
+   return;
+ }
+ notice('Conta ativada com sucesso!');await boot();
 }));
 $('copyGeneratedInvite').addEventListener('click',working(async()=>{await navigator.clipboard.writeText($('generatedInviteText').value);notice('Convite copiado.');}));
 function showInvitation(name,phone,url){
