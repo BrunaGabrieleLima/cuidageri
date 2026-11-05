@@ -142,13 +142,7 @@ $('googleProfileForm').addEventListener('submit',working(async()=>{
  notice('Cadastro concluído! Você já pode registrar suas diárias.');await boot();
 }));
 $('googleProfileLogout').addEventListener('click',working(async()=>{await db.auth.signOut();await boot()}));
-$('linkGoogleAdmin').addEventListener('click',working(async()=>{
- if(!isAdmin())throw Error('Somente a administradora pode vincular o Google.');
- if(!confirm('Vincular sua conta Google a este mesmo usuário administrador? Escolha sua conta Google pessoal na próxima tela.'))return;
- const {data,error}=await db.auth.linkIdentity({provider:'google',options:{redirectTo:location.origin+location.pathname}});
- if(error)throw error;
- if(data?.url)location.assign(data.url);
-}));
+// Vinculação Google da administração concluída. Botão antigo desativado.
 let activatingInvite=false;
 $('invitePasswordForm').addEventListener('submit',working(async()=>{
  if(activatingInvite)return;activatingInvite=true;
@@ -172,8 +166,8 @@ function showInvitation(name,phone,url){
  $('generatedInvite').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 $('shareGeneratedInvite').addEventListener('click',()=>{const text=$('generatedInviteText').value,phone=$('generatedInviteText').dataset.phone;if(text&&phone)window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(text),'_blank','noopener,noreferrer');});
-$('loginMethod').value='phone';$('loginMethod').addEventListener('change',()=>{$('loginEmailField').hidden=$('loginMethod').value==='phone';$('loginPhoneField').hidden=$('loginMethod').value!=='phone'});
-$('authForm').addEventListener('submit',working(async()=>{let input; if($('loginMethod').value==='phone'){const phone=phoneBR($('loginPhone').value);if(!phone)throw Error('Informe o celular com DDD.');const data=await inviteRequest('login',{phone,password:$('password').value});const {error}=await db.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});if(error)throw error;}else{input={email:$('email').value.trim(),password:$('password').value};const {error}=await db.auth.signInWithPassword(input);if(error)throw Error('E-mail ou senha incorretos.');}await boot()}));
+// O acesso antigo por celular/e-mail está desativado nesta interface.
+$('authForm').addEventListener('submit',event=>{event.preventDefault();notice('Acesse usando o botão Entrar com Google.');});
 $('showRegister').addEventListener('click',()=>{$('loginView').hidden=true;$('forgotView').hidden=true;$('confirmationNotice').hidden=true;$('registerView').hidden=false;ensureTurnstile();});
 $('showLogin').addEventListener('click',()=>{$('registerView').hidden=true;$('forgotView').hidden=true;$('confirmationNotice').hidden=true;$('loginView').hidden=false;$('password').value='';});
 function ensureTurnstile(){if(signupCaptchaWidget!==null)return;const render=()=>{if(!window.turnstile)return;const key=cfg.turnstileSiteKey;if(!key){$('turnstileSignup').textContent='Cadastro protegido: configure turnstileSiteKey em config.js.';return;}signupCaptchaWidget=window.turnstile.render('#turnstileSignup',{sitekey:key});};if(window.turnstile)render();else setTimeout(render,900)}
