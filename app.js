@@ -7,6 +7,7 @@ let db,profile,session,patients=[],shifts=[],payments=[],profiles=[],invitedPeop
 let recoveringPassword=false,confirmationEmail="",signupCaptchaWidget=null;
 const isAdmin=()=>profile?.role==='admin'&&profile?.approved===true&&!profile?.access_removed_at;
 const inviteToken=()=>new URLSearchParams(location.search).get('convite')||'';
+const googleLogin=async()=>{const {error}=await db.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:'select_account'}}});if(error)throw error;};
 const phoneBR=s=>{let n=String(s||'').replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);if(!n.startsWith('55'))n='55'+n;return /^55\d{10,11}$/.test(n)?'+'+n:null};
 // Identificador técnico do Auth: não é um e-mail pessoal e não deve receber mensagens.
 const caregiverAuthEmail=phone=>phone.replace(/\D/g,'')+'@accounts.cuidageri.example.com';
@@ -92,23 +93,62 @@ $('accessList').innerHTML=profiles.filter(p=>!p.access_removed_at).map(p=>`<div 
 $('removedAccessList').innerHTML=profiles.filter(p=>p.access_removed_at).map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name||'(sem nome)')}</span><span class="pill rejected">Acesso removido</span></div><div class="recordMeta">Histórico preservado · ${esc(p.access_removed_at?.slice(0,10)||'')}</div><div class="rowActions"><button class="light small" data-action="restore-access" data-id="${esc(p.id)}">Restaurar acesso</button></div></div>`).join('')||'<p class="muted">Nenhum acesso removido.</p>';
 $('invitedList').innerHTML=invitedPeople.filter(p=>p.status==='pending').map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name)}</span><span class="pill">Aguardando ativação</span></div><div class="recordMeta">${esc(p.phone_e164)} · Válido até ${esc(new Date(p.expires_at).toLocaleString('pt-BR'))}</div><div class="rowActions"><button class="small" data-action="reissue-invite" data-id="${esc(p.id)}">Gerar novo link</button><button class="dangerBtn small" data-action="cancel-invite" data-id="${esc(p.id)}">Cancelar convite</button></div></div>`).join('')||'<p class="muted">Nenhum convite pendente.</p>';
 }
-async function boot(){const {data,error}=await db.auth.getSession();if(error)throw error;session=data.session;
- if(recoveringPassword){$('auth').hidden=false;$('app').hidden=true;$('loginView').hidden=true;$('registerView').hidden=true;$('invitePasswordView').hidden=true;$('forgotView').hidden=true;$('confirmationNotice').hidden=true;$('resetView').hidden=false;return;}
- if(inviteToken()){
-   $('setup').hidden=true;$('auth').hidden=false;$('app').hidden=true;
-   $('loginView').hidden=true;$('registerView').hidden=true;$('invitePasswordView').hidden=false;
-   $('invitePasswordHelp').textContent='Convite pessoal e de uso único (48h). O e-mail será solicitado após o primeiro login.';
+async function boot(){
+ const {data,error}=await db.auth.getSession();if(error)throw error;session=data.session;
+ $('setup').hidden=true;
+ $('recoverySetup').hidden=true;
+ $('auth').hidden=!!session;
+ $('app').hidden=true;
+ for(const id of ['loginView','registerView','invitePasswordView','forgotView','resetView','confirmationNotice','googleProfileView'])$(id).hidden=true;
+ $('loginView').hidden=!!session;
+ if(!session){profile=null;return;}
+ const {data:p,error:e}=await db.from('care_profiles').select('*').eq('id',session.user.id).single();
+ if(e)throw Error('Não foi possível consultar seu perfil. Verifique se a função de cadastro está ativa no Supabase. '+e.message);
+ profile=p;
+ // New Google caregiver accounts have no phone until completing the simple first-login form.
+ if(p.role!=='admin'&&(!p.phone_e164||!p.display_name?.trim())){
+   $('auth').hidden=false;
+   $('loginView').hidden=true;
+   $('googleProfileView').hidden=false;
+   $('googleName').value=p.display_name||session.user.user_metadata?.full_name||session.user.user_metadata?.name||'';
    return;
  }
- $('invitePasswordView').hidden=true;$('auth').hidden=!!session;$('app').hidden=true;$('recoverySetup').hidden=true;if(!session)return;
-const {data:p,error:e}=await db.from('care_profiles').select('*').eq('id',session.user.id).single();if(e)throw e;profile=p;if(p.role!=='admin' && isTechnicalEmail(session.user.email)){ $('recoverySetup').hidden=false;return;} $('app').hidden=false;$('welcome').textContent=`Olá, ${p.display_name||'cuidadora'}!`;$('roleBadge').hidden=false;$('roleBadge').textContent=p.role==='admin'?'Administração':'Cuidadora';$('accessInfo').textContent=p.role==='admin'?'Confira e aprove os plantões enviados.':'Registre seus próprios plantões para conferência.';$('pendingAccess').hidden=!!(p.approved&&!p.access_removed_at);$('authorized').hidden=!(p.approved&&!p.access_removed_at);
-if(p.approved&&!p.access_removed_at){document.querySelectorAll('.adminOnly').forEach(el=>el.hidden=p.role!=='admin');document.querySelectorAll('.caregiverOnly').forEach(el=>el.hidden=p.role==='admin');showTab(p.role==='admin'?'dashboard':'new');$('monthHistory').hidden=true;$('monthHistory').innerHTML='';await refresh()}}
+ $('app').hidden=false;
+ $('welcome').textContent=`Olá, ${p.display_name||'cuidadora'}!`;
+ $('roleBadge').hidden=false;
+ $('roleBadge').textContent=p.role==='admin'?'Administração':'Cuidadora';
+ $('accessInfo').textContent=p.role==='admin'?'Confira e aprove os plantões enviados.':'Registre seus próprios plantões para conferência.';
+ $('pendingAccess').hidden=!!(p.approved&&!p.access_removed_at);
+ $('authorized').hidden=!(p.approved&&!p.access_removed_at);
+ if(p.approved&&!p.access_removed_at){
+   document.querySelectorAll('.adminOnly').forEach(el=>el.hidden=p.role!=='admin');
+   document.querySelectorAll('.caregiverOnly').forEach(el=>el.hidden=p.role==='admin');
+   showTab(p.role==='admin'?'dashboard':'new');
+   $('monthHistory').hidden=true;$('monthHistory').innerHTML='';await refresh();
+ }
+}
 function showTab(id){if(id!=='closeMonth'){$('monthHistory').innerHTML='';$('monthHistory').hidden=true;}document.querySelectorAll('.pane').forEach(el=>el.hidden=el.id!==id);document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===id))}
 if(!ok){$('setup').hidden=false;$('auth').hidden=true}else{
  db=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:'cuidageri-auth'}});
- db.auth.onAuthStateChange((event)=>{if(event==='PASSWORD_RECOVERY')recoveringPassword=true;setTimeout(()=>boot().catch(fail),0);});
+ db.auth.onAuthStateChange(()=>{setTimeout(()=>boot().catch(fail),0);});
  boot().catch(fail);
 }
+$('googleLoginBtn').addEventListener('click',working(googleLogin));
+$('googleProfileForm').addEventListener('submit',working(async()=>{
+ const name=$('googleName').value.trim(),phone=phoneBR($('googlePhone').value);
+ if(name.length<2||name.length>120||!phone)throw Error('Informe seu nome e WhatsApp com DDD.');
+ const {error}=await db.rpc('care_complete_google_signup',{p_display_name:name,p_phone:phone});
+ if(error)throw Error(error.message||'Não foi possível concluir seu cadastro.');
+ notice('Cadastro concluído! Você já pode registrar suas diárias.');await boot();
+}));
+$('googleProfileLogout').addEventListener('click',working(async()=>{await db.auth.signOut();await boot()}));
+$('linkGoogleAdmin').addEventListener('click',working(async()=>{
+ if(!isAdmin())throw Error('Somente a administradora pode vincular o Google.');
+ if(!confirm('Vincular sua conta Google a este mesmo usuário administrador? Escolha sua conta Google pessoal na próxima tela.'))return;
+ const {data,error}=await db.auth.linkIdentity({provider:'google',options:{redirectTo:location.origin+location.pathname}});
+ if(error)throw error;
+ if(data?.url)location.assign(data.url);
+}));
 let activatingInvite=false;
 $('invitePasswordForm').addEventListener('submit',working(async()=>{
  if(activatingInvite)return;activatingInvite=true;
