@@ -3,11 +3,13 @@ const cfg=window.APP_CONFIG||{};
 const ok=cfg.supabaseUrl?.startsWith('https://') && cfg.supabaseAnonKey && !cfg.supabaseAnonKey.startsWith('COLE_');
 const $=id=>document.getElementById(id), money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let db,profile,session,patients=[],shifts=[],payments=[],profiles=[],invitedPeople=[];
+let recoveringPassword=false,confirmationEmail="",signupCaptchaWidget=null;
 const isAdmin=()=>profile?.role==='admin'&&profile?.approved===true&&!profile?.access_removed_at;
 const inviteToken=()=>new URLSearchParams(location.search).get('convite')||'';
 const phoneBR=s=>{let n=String(s||'').replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);if(!n.startsWith('55'))n='55'+n;return /^55\d{10,11}$/.test(n)?'+'+n:null};
 // Identificador técnico do Auth: não é um e-mail pessoal e não deve receber mensagens.
 const caregiverAuthEmail=phone=>phone.replace(/\D/g,'')+'@accounts.cuidageri.example.com';
+const isTechnicalEmail=e=>!e||e.endsWith('@accounts.cuidageri.example.com');
 const INVOKE='cuidageri-convites';
 async function inviteRequest(action,payload={},authorization){const headers={'Content-Type':'application/json','apikey':cfg.supabaseAnonKey};if(authorization)headers.Authorization='Bearer '+authorization;const r=await fetch(cfg.supabaseUrl+'/functions/v1/'+INVOKE,{method:'POST',headers,body:JSON.stringify({action,...payload})});const data=await r.json().catch(()=>({}));if(!r.ok||data.error)throw Error(data.error||'Não foi possível completar a operação.');return data;}
 function notice(message){$('notice').textContent=message;$('notice').style.display='block';setTimeout(()=>$('notice').style.display='none',4500)}
@@ -90,58 +92,36 @@ $('removedAccessList').innerHTML=profiles.filter(p=>p.access_removed_at).map(p=>
 $('invitedList').innerHTML=invitedPeople.filter(p=>p.status==='pending').map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name)}</span><span class="pill">Aguardando ativação</span></div><div class="recordMeta">${esc(p.phone_e164)} · Válido até ${esc(new Date(p.expires_at).toLocaleString('pt-BR'))}</div><div class="rowActions"><button class="small" data-action="reissue-invite" data-id="${esc(p.id)}">Gerar novo link</button><button class="dangerBtn small" data-action="cancel-invite" data-id="${esc(p.id)}">Cancelar convite</button></div></div>`).join('')||'<p class="muted">Nenhum convite pendente.</p>';
 }
 async function boot(){const {data,error}=await db.auth.getSession();if(error)throw error;session=data.session;
+ if(recoveringPassword){$('auth').hidden=false;$('app').hidden=true;$('loginView').hidden=true;$('registerView').hidden=true;$('invitePasswordView').hidden=true;$('forgotView').hidden=true;$('confirmationNotice').hidden=true;$('resetView').hidden=false;return;}
  if(inviteToken()){
    $('setup').hidden=true;$('auth').hidden=false;$('app').hidden=true;
    $('loginView').hidden=true;$('registerView').hidden=true;$('invitePasswordView').hidden=false;
-   $('invitePasswordHelp').textContent='Este convite é pessoal, de uso único e válido por 48 horas. Defina sua senha para ativar o acesso.';
+   $('invitePasswordHelp').textContent='Convite pessoal e de uso único (48h). O e-mail será solicitado após o primeiro login.';
    return;
  }
- $('invitePasswordView').hidden=true;$('auth').hidden=!!session;$('app').hidden=!session;if(!session)return;
-const {data:p,error:e}=await db.from('care_profiles').select('*').eq('id',session.user.id).single();if(e)throw e;profile=p;$('welcome').textContent=`Olá, ${p.display_name||'cuidadora'}!`;$('roleBadge').hidden=false;$('roleBadge').textContent=p.role==='admin'?'Administração':'Cuidadora';$('accessInfo').textContent=p.role==='admin'?'Confira e aprove os plantões enviados.':'Registre seus próprios plantões para conferência.';$('pendingAccess').hidden=p.approved;$('authorized').hidden=!p.approved;
-if(p.approved){document.querySelectorAll('.adminOnly').forEach(el=>el.hidden=p.role!=='admin');document.querySelectorAll('.caregiverOnly').forEach(el=>el.hidden=p.role==='admin');showTab(p.role==='admin'?'dashboard':'new');$('monthHistory').hidden=true;$('monthHistory').innerHTML='';await refresh()}}
+ $('invitePasswordView').hidden=true;$('auth').hidden=!!session;$('app').hidden=true;$('recoverySetup').hidden=true;if(!session)return;
+const {data:p,error:e}=await db.from('care_profiles').select('*').eq('id',session.user.id).single();if(e)throw e;profile=p;if(p.role!=='admin' && isTechnicalEmail(session.user.email)){ $('recoverySetup').hidden=false;return;} $('app').hidden=false;$('welcome').textContent=`Olá, ${p.display_name||'cuidadora'}!`;$('roleBadge').hidden=false;$('roleBadge').textContent=p.role==='admin'?'Administração':'Cuidadora';$('accessInfo').textContent=p.role==='admin'?'Confira e aprove os plantões enviados.':'Registre seus próprios plantões para conferência.';$('pendingAccess').hidden=!!(p.approved&&!p.access_removed_at);$('authorized').hidden=!(p.approved&&!p.access_removed_at);
+if(p.approved&&!p.access_removed_at){document.querySelectorAll('.adminOnly').forEach(el=>el.hidden=p.role!=='admin');document.querySelectorAll('.caregiverOnly').forEach(el=>el.hidden=p.role==='admin');showTab(p.role==='admin'?'dashboard':'new');$('monthHistory').hidden=true;$('monthHistory').innerHTML='';await refresh()}}
 function showTab(id){if(id!=='closeMonth'){$('monthHistory').innerHTML='';$('monthHistory').hidden=true;}document.querySelectorAll('.pane').forEach(el=>el.hidden=el.id!==id);document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===id))}
 if(!ok){$('setup').hidden=false;$('auth').hidden=true}else{
  db=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:'cuidageri-auth'}});
- db.auth.onAuthStateChange(()=>setTimeout(()=>boot().catch(fail),0));
+ db.auth.onAuthStateChange((event)=>{if(event==='PASSWORD_RECOVERY')recoveringPassword=true;setTimeout(()=>boot().catch(fail),0);});
  boot().catch(fail);
 }
 let activatingInvite=false;
 $('invitePasswordForm').addEventListener('submit',working(async()=>{
- if(activatingInvite)return;
- activatingInvite=true;
- const submitButton=$('invitePasswordForm').querySelector('button[type=submit]');submitButton.disabled=true;
+ if(activatingInvite)return;activatingInvite=true;
+ const button=$('invitePasswordForm').querySelector('button[type=submit]');button.disabled=true;
  try{
- const password=$('invitePassword').value;
- if(password.length<6||password!==$('invitePasswordConfirm').value)throw Error('Use no mínimo 6 caracteres e confirme a senha.');
- // A ativação e o login são duas operações distintas. O token é consumido
- // com sucesso pela Edge Function; falha no login NÃO significa falha na ativação.
- 
-const data = await inviteRequest('redeem', {
-  token: inviteToken(),
-  name: $('inviteNameConfirm').value.trim(),
-  phone: $('invitePhoneConfirm').value.trim(),
-  password
-});
-
- $('invitePassword').value='';$('invitePasswordConfirm').value='';
- history.replaceState(null,'',location.pathname);
- const {error}=await db.auth.signInWithPassword({email:caregiverAuthEmail(data.phone),password});
- if(error){
-   $('invitePasswordView').hidden=true;
-   $('registerView').hidden=true;
-   $('loginView').hidden=false;
-   $('auth').hidden=false;
-   $('app').hidden=true;
-   $('loginMethod').value='phone';
-   $('loginMethod').dispatchEvent(new Event('change'));
-   $('loginPhone').value=data.phone;
-   $('password').value='';
-   $('invitePasswordHelp').textContent='';
-   notice('Conta ativada com sucesso! Entre com seu WhatsApp e a senha criada. Se o acesso falhar, avise a administração.');
-   return;
- }
- notice('Conta ativada com sucesso!');await boot();
- }finally{activatingInvite=false;submitButton.disabled=false;}
+  const phone=phoneBR($('invitePhoneConfirm').value),name=$('inviteNameConfirm').value.trim(),password=$('invitePassword').value;
+  if(!phone||name.length<2||name.length>120)throw Error('Informe nome e celular válidos.');
+  if(password.length<6||password!==$('invitePasswordConfirm').value)throw Error('Senha com no mínimo 6 caracteres e confirmação idêntica.');
+  const res=await inviteRequest('redeem',{token:inviteToken(),name,phone,password});
+  history.replaceState(null,'',location.pathname);
+  const login=await inviteRequest('login',{phone,password});
+  const {error}=await db.auth.setSession({access_token:login.access_token,refresh_token:login.refresh_token});if(error)throw error;
+  $('invitePassword').value='';$('invitePasswordConfirm').value='';notice('Conta ativada. Cadastre seu e-mail de recuperação.');await boot();
+ }finally{activatingInvite=false;button.disabled=false;}
 }));
 $('copyGeneratedInvite').addEventListener('click',working(async()=>{await navigator.clipboard.writeText($('generatedInviteText').value);notice('Convite copiado.');}));
 function showInvitation(name,phone,url){
@@ -151,11 +131,36 @@ function showInvitation(name,phone,url){
  $('generatedInvite').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 $('shareGeneratedInvite').addEventListener('click',()=>{const text=$('generatedInviteText').value,phone=$('generatedInviteText').dataset.phone;if(text&&phone)window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(text),'_blank','noopener,noreferrer');});
-$('loginMethod').addEventListener('change',()=>{$('loginEmailField').hidden=$('loginMethod').value==='phone';$('loginPhoneField').hidden=$('loginMethod').value!=='phone'});
-$('authForm').addEventListener('submit',working(async()=>{let input; if($('loginMethod').value==='phone'){const phone=phoneBR($('loginPhone').value);if(!phone)throw Error('Informe o WhatsApp com DDD.');input={email:caregiverAuthEmail(phone),password:$('password').value}}else{input={email:$('email').value.trim(),password:$('password').value}}const {error}=await db.auth.signInWithPassword(input);if(error)throw Error('Telefone/e-mail ou senha incorretos. Se sua conta foi criada antes da atualização, solicite a migração à administração.');await boot()}));
-$('showRegister').addEventListener('click',()=>{$('loginView').hidden=true;$('registerView').hidden=false;$('registerEmail').value=$('email').value.trim();});
-$('showLogin').addEventListener('click',()=>{$('registerView').hidden=true;$('loginView').hidden=false;$('password').value='';});
-$('registerForm').addEventListener('submit',working(async()=>{const name=$('displayName').value.trim();if(!name)throw Error('Informe seu nome.');const {error}=await db.auth.signUp({email:$('registerEmail').value.trim(),password:$('registerPassword').value,options:{data:{display_name:name}}});if(error)throw error;$('registerPassword').value='';notice('Cadastro solicitado. Confira seu e-mail e aguarde liberação.');$('showLogin').click()}));
+$('loginMethod').value='phone';$('loginMethod').addEventListener('change',()=>{$('loginEmailField').hidden=$('loginMethod').value==='phone';$('loginPhoneField').hidden=$('loginMethod').value!=='phone'});
+$('authForm').addEventListener('submit',working(async()=>{let input; if($('loginMethod').value==='phone'){const phone=phoneBR($('loginPhone').value);if(!phone)throw Error('Informe o celular com DDD.');const data=await inviteRequest('login',{phone,password:$('password').value});const {error}=await db.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});if(error)throw error;}else{input={email:$('email').value.trim(),password:$('password').value};const {error}=await db.auth.signInWithPassword(input);if(error)throw Error('E-mail ou senha incorretos.');}await boot()}));
+$('showRegister').addEventListener('click',()=>{$('loginView').hidden=true;$('forgotView').hidden=true;$('confirmationNotice').hidden=true;$('registerView').hidden=false;ensureTurnstile();});
+$('showLogin').addEventListener('click',()=>{$('registerView').hidden=true;$('forgotView').hidden=true;$('confirmationNotice').hidden=true;$('loginView').hidden=false;$('password').value='';});
+function ensureTurnstile(){if(signupCaptchaWidget!==null)return;const render=()=>{if(!window.turnstile)return;const key=cfg.turnstileSiteKey;if(!key){$('turnstileSignup').textContent='Cadastro protegido: configure turnstileSiteKey em config.js.';return;}signupCaptchaWidget=window.turnstile.render('#turnstileSignup',{sitekey:key});};if(window.turnstile)render();else setTimeout(render,900)}
+$('registerForm').addEventListener('submit',working(async()=>{
+ const name=$('displayName').value.trim(),phone=phoneBR($('registerPhone').value),password=$('registerPassword').value;
+ if(name.length<2||!phone||password.length<6||password!==$('registerPasswordConfirm').value)throw Error('Confira nome, celular e confirmação da senha (mínimo 6 caracteres).');
+ const captcha=window.turnstile&&signupCaptchaWidget!==null?window.turnstile.getResponse(signupCaptchaWidget):null;
+ if(!captcha)throw Error('Conclua a verificação de segurança.');
+ try{await inviteRequest('register',{name,phone,password,captcha});
+ const data=await inviteRequest('login',{phone,password});const {error}=await db.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});if(error)throw error;
+ $('registerPassword').value='';$('registerPasswordConfirm').value='';notice('Cadastro realizado. Informe seu e-mail de recuperação.');await boot();}
+ finally{if(window.turnstile&&signupCaptchaWidget!==null)window.turnstile.reset(signupCaptchaWidget)}
+}));
+$('recoveryEmailForm').addEventListener('submit',working(async()=>{
+ const email=$('recoveryEmail').value.trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw Error('Informe um e-mail válido.');
+ const {error}=await db.auth.updateUser({email},{emailRedirectTo:location.origin+location.pathname});if(error)throw error;
+ notice('Confira a caixa de entrada do seu e-mail para confirmar o endereço.');
+}));
+$('recheckRecovery').addEventListener('click',working(async()=>{await db.auth.refreshSession();const {data}=await db.auth.getUser();if(!isTechnicalEmail(data.user?.email))notice('E-mail confirmado.');else notice('A confirmação ainda está pendente. Confira o e-mail.');await boot()}));
+$('logoutRecovery').addEventListener('click',working(async()=>{await db.auth.signOut();await boot()}));
+
+$('showForgot').addEventListener('click',()=>{$('loginView').hidden=true;$('registerView').hidden=true;$('forgotView').hidden=false;$('forgotEmail').value=$('email').value.trim();});
+$('backFromForgot').addEventListener('click',()=>{$('forgotView').hidden=true;$('loginView').hidden=false;});
+$('backFromConfirmation').addEventListener('click',()=>{$('confirmationNotice').hidden=true;$('loginView').hidden=false;$('loginMethod').value='email';$('loginMethod').dispatchEvent(new Event('change'));$('email').value=confirmationEmail;});
+$('forgotForm').addEventListener('submit',working(async()=>{const email=$('forgotEmail').value.trim().toLowerCase();const {error}=await db.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw error;notice('Se o e-mail estiver cadastrado, enviaremos um link para redefinir sua senha.');}));
+$('resendFromForgot').addEventListener('click',working(async()=>{const email=$('forgotEmail').value.trim().toLowerCase();if(!email)throw Error('Informe seu e-mail.');const {error}=await db.auth.resend({type:'signup',email,options:{emailRedirectTo:location.origin+location.pathname}});if(error)throw error;notice('Se o cadastro estiver pendente, enviaremos uma mensagem de confirmação.');}));
+$('resendConfirmation').addEventListener('click',working(async()=>{if(!confirmationEmail)throw Error('E-mail não encontrado.');const {error}=await db.auth.resend({type:'signup',email:confirmationEmail,options:{emailRedirectTo:location.origin+location.pathname}});if(error)throw error;notice('Se o cadastro estiver pendente, enviaremos nova confirmação.');}));
+$('resetForm').addEventListener('submit',working(async()=>{const password=$('resetPassword').value;if(password.length<6||password!==$('resetConfirm').value)throw Error('As senhas devem coincidir e ter no mínimo 6 caracteres.');const {error}=await db.auth.updateUser({password});if(error)throw error;recoveringPassword=false;$('resetPassword').value='';$('resetConfirm').value='';notice('Senha atualizada com sucesso.');await boot();}));
 $('logoutBtn').addEventListener('click',working(async()=>{await db.auth.signOut();await boot()}));
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 $('workDate').value=new Date().toLocaleDateString('en-CA');$('closureMonth').value=$('workDate').value.slice(0,7);
