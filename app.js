@@ -1,3 +1,4 @@
+// CuidaGeri cadastro v2.5.1 - nome + celular + senha, sem registerEmail
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 const cfg=window.APP_CONFIG||{};
 const ok=cfg.supabaseUrl?.startsWith('https://') && cfg.supabaseAnonKey && !cfg.supabaseAnonKey.startsWith('COLE_');
