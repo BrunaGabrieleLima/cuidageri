@@ -381,6 +381,67 @@ function exportDashboardDetailsPdf(){
 }
 $('dashboardExportPdf').addEventListener('click',exportDashboardDetailsPdf);
 
+// Baixa um arquivo .xlsx com os mesmos filtros e linhas do PDF.
+// A biblioteca SheetJS e carregada estaticamente no index.html; nao envia dados a terceiros.
+function exportDashboardDetailsExcel(){
+ if(!isAdmin())return notice('Acesso restrito à administração.');
+ if(!window.XLSX)return notice('Não foi possível carregar o gerador de Excel. Verifique a conexão e atualize a página.');
+ const start=$('dashboardStart').value,end=$('dashboardEnd').value;
+ if(start&&end&&start>end)return notice('A data inicial não pode ser posterior à final.');
+ const caregiver=$('dashboardCaregiver').value,patient=$('dashboardPatient').value;
+ const patientName=patients.find(p=>p.id===patient)?.name||'Todos os pacientes';
+ const rows=shifts.filter(s=>s.status!=='rejected'&&(!start||s.work_date>=start)&&(!end||s.work_date<=end)&&(!caregiver||s.caregiver_name===caregiver)&&(!patient||s.patient_id===patient)).sort((a,b)=>b.work_date.localeCompare(a.work_date));
+ const dateBR=d=>d?d.split('-').reverse().join('/'):'—';
+ const approved=rows.filter(s=>s.status==='approved');
+ const approvedAmount=approved.reduce((n,s)=>n+total(s),0);
+ const paidAmount=approved.reduce((n,s)=>n+paid(s.id),0);
+ const balance=Math.max(0,approvedAmount-paidAmount);
+ const details=rows.map(s=>[
+   dateBR(s.work_date),s.caregiver_name||'',patients.find(p=>p.id===s.patient_id)?.name||'',
+   s.environment||'',Number(s.shift_hours)||0,statusLabel(s.status),
+   s.status==='approved'?total(s):null,
+   s.status==='approved'?paid(s.id):null,
+   s.status==='approved'?Math.max(0,total(s)-paid(s.id)):null
+ ]);
+ const XLSX=window.XLSX;
+ const data=[
+   ['CuidaGeri — Detalhamento do período'],
+   ['De',dateBR(start),'Até',dateBR(end)],
+   ['Cuidadora',caregiver||'Todas as cuidadoras','Paciente',patientName],
+   ['Plantões',rows.length,'Valor aprovado',approvedAmount,'Pago',paidAmount,'Saldo',balance],
+   [],
+   ['Data','Cuidadora','Paciente','Ambiente','Horas','Status','Aprovado (R$)','Pago (R$)','Saldo (R$)'],
+   ...details,
+   [],
+   ['TOTAL','','','','','',approvedAmount,paidAmount,balance]
+ ];
+ const ws=XLSX.utils.aoa_to_sheet(data);
+ ws['!cols']=[{wch:15},{wch:26},{wch:23},{wch:16},{wch:10},{wch:15},{wch:19},{wch:17},{wch:19}];
+ ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:8}}];
+ const currency='#,##0.00;[Red](#,##0.00);–';
+ for(let r=6;r<6+details.length;r++){
+   for(const c of [6,7,8]){
+     const cell=ws[XLSX.utils.encode_cell({r,c})];
+     if(cell&&cell.t==='n')cell.z=currency;
+   }
+ }
+ for(const c of [3,5,7]){
+   const cell=ws[XLSX.utils.encode_cell({r:3,c})];
+   if(cell&&cell.t==='n')cell.z=currency;
+ }
+ const lastRow=8+details.length;
+ for(const c of [6,7,8]){
+   const cell=ws[XLSX.utils.encode_cell({r:lastRow,c})];
+   if(cell&&cell.t==='n')cell.z=currency;
+ }
+ const wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,ws,'Detalhamento');
+ const filename=`CuidaGeri_Detalhamento_${start||'inicio'}_a_${end||'fim'}.xlsx`;
+ XLSX.writeFile(wb,filename,{bookType:'xlsx',compression:true});
+}
+$('dashboardExportExcel').addEventListener('click',()=>{try{exportDashboardDetailsExcel()}catch(e){fail(e)}});
+
+
 
 // Instalação PWA: o navegador decide quando permite apresentar o convite.
 let pendingInstallPrompt=null;
