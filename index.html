@@ -38,12 +38,21 @@
 <section id="csvAdmin" class="pane" hidden><div class="card"><h2>Conferência de CSV</h2><p class="muted">Exclusivo da administração. Selecione um CSV para conferir colunas e conteúdo antes de qualquer importação. Esta prévia não grava dados ou pagamentos no banco.</p><label>Arquivo CSV<input type="file" id="csvFile" accept=".csv,text/csv"></label><div id="csvPreview"></div></div></section>
 <section id="access" class="pane" hidden>
 <div class="card"><h2>Gerenciar acessos</h2><p class="muted">Envie convites individuais, suspenda ou remova acessos. Plantões e pagamentos permanecem preservados ao remover um acesso.</p>
-<div class="accessIntro"><h3>Convidar cuidadora</h3><p class="muted">Informe nome e WhatsApp com DDD. Envie o convite gerado pelo WhatsApp; a cuidadora cria sua senha no link recebido.</p>
+<div class="accessIntro" hidden><h3>Convidar cuidadora</h3><p class="muted">Informe nome e WhatsApp com DDD. Envie o convite gerado pelo WhatsApp; a cuidadora cria sua senha no link recebido.</p>
 <form id="inviteCaregiverForm"><div class="twocol"><label>Nome completo<input id="inviteName" required autocomplete="off" maxlength="120" placeholder="Nome da cuidadora"></label><label>WhatsApp com DDD<input id="invitePhone" type="tel" required autocomplete="off" inputmode="tel" placeholder="(81) 99999-9999"></label></div><button type="submit">Gerar convite</button></form><div id="generatedInvite" class="inviteOutput" hidden><h4>Convite pronto</h4><p class="muted">Compartilhe somente com a destinatária. Este link permite ativar uma conta e deve permanecer privado.</p><textarea id="generatedInviteText" rows="4" readonly></textarea><div class="rowActions"><button id="copyGeneratedInvite" type="button" class="small">Copiar convite</button><button id="shareGeneratedInvite" type="button" class="small light">Compartilhar no WhatsApp</button></div></div></div>
 <details class="migrationPanel"><summary>Corrigir login de cuidadora cadastrada anteriormente</summary><p class="muted">Use para contas que foram ativadas antes desta atualização, como a conta de teste. Preserva o ID da cuidadora e os registros. Não altera a senha anterior.</p><form id="migratePhoneForm" class="twocol"><label>WhatsApp com DDD<input id="migratePhone" type="tel" inputmode="tel" placeholder="(81) 99999-9999" required></label><div style="align-self:end"><button type="submit" class="small">Adaptar conta existente</button></div></form></details>
+<div id="org4fArea" class="accessIntro" hidden>
+<h3>Equipe da família do Sr. Reginaldo — convite Google</h3>
+<p class="muted">O cadastro Google é independente: somente um convite enviado ao e-mail exato da cuidadora permite vincular a conta à família. Validade de 72 horas.</p>
+<form id="org4fInviteForm"><label>E-mail da conta Google da cuidadora<input id="org4fEmail" type="email" autocomplete="off" required placeholder="cuidadora@gmail.com"></label><button type="submit">Gerar convite de vínculo</button></form>
+<div id="org4fGenerated" hidden><p class="muted">Link privado: copie e envie apenas à cuidadora destinatária. O aceite exige login com o mesmo e-mail Google.</p><textarea id="org4fLink" readonly rows="3"></textarea><button id="org4fCopy" type="button" class="small light">Copiar link</button></div>
+<h3>Cuidadoras vinculadas à família</h3><div id="org4fMembers"></div>
+<h3>Convites de vínculo pendentes</h3><div id="org4fInvites"></div>
+</div>
+<details><summary>Controles antigos de contas (piloto)</summary><p class="muted">Esses controles ainda são globais e serão substituídos na etapa de isolamento completo. Não os utilize para novos clientes.</p>
 <h3>Contas cadastradas</h3><div id="accessList"></div>
 <h3>Convites aguardando ativação</h3><div id="invitedList"></div>
-<details class="removedAccounts"><summary>Acessos removidos</summary><div id="removedAccessList"></div></details>
+<details class="removedAccounts"><summary>Acessos removidos</summary><div id="removedAccessList"></div></details></details>
 </div></section>
 </div></section><div id="installHelp" class="installHelp" role="dialog" aria-labelledby="installHelpTitle" aria-modal="true" hidden><div class="installHelpCard"><button type="button" id="closeInstallHelp" class="small light installClose" aria-label="Fechar">Fechar</button><h2 id="installHelpTitle">Colocar o CuidaGeri na tela inicial</h2><p id="installHelpText"></p><p class="muted">Use o navegador do próprio celular. Não é necessário baixar um aplicativo da loja.</p></div></div><div id="notice" role="status" aria-live="polite"></div></main>
-<script src="config.js"></script><script type="module" src="app.js?v=google-final-20261105"></script></body></html>
+<script src="config.js"></script><script type="module" src="app.js?v=org4f-20261109"></script></body></html>
