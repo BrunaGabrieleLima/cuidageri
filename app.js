@@ -111,7 +111,7 @@ async function loadOrg4f(){
    rpc4f('care_org_members_list_v4f',{p_organization_id:org4f}),
    rpc4f('care_org_invite_list_v4f',{p_organization_id:org4f})
  ]);
- $('org4fMembers').innerHTML=(members||[]).map(m=>`<div class="record"><div class="recordHead"><span>${esc(m.display_name||'Sem nome')}</span><span class="pill">${esc(m.organization_role)}</span></div>${m.organization_role==='caregiver'?`<div class="rowActions"><button type="button" class="small light" data-unlink="${esc(m.user_id)}" data-person="${esc(m.display_name)}">Desvincular da família</button></div>`:''}</div>`).join('')||'<p>Sem membros.</p>';
+ $('org4fMembers').innerHTML=(members||[]).map(m=>{const manager=['owner','manager'].includes(m.organization_role);const name=esc(m.display_name||'Sem nome');const detail=manager?'Administradora · Sua conta':'Cuidadora · Conta vinculada';const status=manager?'Administração':'Vinculada';return `<div class="record"><div class="recordHead"><span>${name}</span><span class="pill approved">${status}</span></div><div class="recordMeta">${detail}</div>${m.organization_role==='caregiver'?`<div class="rowActions"><button type="button" class="small light" data-unlink="${esc(m.user_id)}" data-person="${name}">Desvincular da família</button></div>`:''}</div>`;}).join('')||'<p>Sem membros.</p>';
  $('org4fInvites').innerHTML=(invites||[]).filter(x=>x.status==='pending').map(i=>`<div class="record"><div class="recordHead"><span>${esc(i.invited_email)}</span><span class="pill">${new Date(i.expires_at)<new Date()?'Expirado':'Aguardando aceite'}</span></div><div class="rowActions"><button type="button" class="small light" data-cancel="${esc(i.id)}">Cancelar convite</button></div></div>`).join('')||'<p>Nenhum convite pendente.</p>';
 }
 async function acceptOrgInvite4f(){
@@ -295,15 +295,6 @@ $('removedAccessList').addEventListener('click',working(async ev=>{
  if(!confirm('Restaurar o acesso desta cuidadora?'))return;
  const {error}=await db.from('care_profiles').update({access_removed_at:null,approved:true}).eq('id',b.dataset.id).eq('role','caregiver');if(error)throw error;
  await refresh();notice('Acesso restaurado.');
-}));
-$('migratePhoneForm').addEventListener('submit',working(async ev=>{
- if(!isAdmin())throw Error('Ação exclusiva da administração.');
- const phone=phoneBR($('migratePhone').value);
- if(!phone)throw Error('Informe o telefone com DDD.');
- if(!confirm('Adaptar a autenticação desta conta sem excluir seus registros? Confirme que o número é da cuidadora.'))return;
- const {data:auth}=await db.auth.getSession();
- const result=await inviteRequest('migrate-existing',{phone},auth.session?.access_token);
- $('migratePhoneForm').reset();notice(result.alreadyConfigured?'Conta já adaptada.':'Conta adaptada. Agora entre com o número e a senha que já havia sido definida.');await refresh();
 }));
 $('invitedList').addEventListener('click',working(async ev=>{
  const b=ev.target.closest('button[data-action]');if(!b||!isAdmin())return;
