@@ -355,6 +355,33 @@ dashboardCurrentMonth();
 ['dashboardStart','dashboardEnd','dashboardCaregiver','dashboardPatient'].forEach(id=>$(id).addEventListener('change',()=>{if($('dashboardStart').value&&$('dashboardEnd').value&&$('dashboardStart').value>$('dashboardEnd').value)return notice('A data inicial não pode ser posterior à final.');renderDashboard()}));
 $('dashboardClear').addEventListener('click',()=>{ $('dashboardCaregiver').value='';$('dashboardPatient').value='';dashboardCurrentMonth()});
 
+// Exporta apenas as linhas exibidas em "Detalhamento do período".
+// A impressão pode ser salva como PDF pelo navegador; sem chamadas ao banco.
+function exportDashboardDetailsPdf(){
+ if(!isAdmin())return notice('Acesso restrito à administração.');
+ const start=$('dashboardStart').value,end=$('dashboardEnd').value;
+ if(start&&end&&start>end)return notice('A data inicial não pode ser posterior à final.');
+ const caregiver=$('dashboardCaregiver').value,patient=$('dashboardPatient').value;
+ const selectedPatient=patients.find(p=>p.id===patient)?.name||'Todos os pacientes';
+ const rows=shifts.filter(s=>s.status!=='rejected'&&(!start||s.work_date>=start)&&(!end||s.work_date<=end)&&(!caregiver||s.caregiver_name===caregiver)&&(!patient||s.patient_id===patient)).sort((a,b)=>b.work_date.localeCompare(a.work_date));
+ const dateBR=d=>d?d.split('-').reverse().join('/'):'—';
+ const approved=rows.filter(s=>s.status==='approved');
+ const approvedAmount=approved.reduce((n,s)=>n+total(s),0);
+ const paidAmount=approved.reduce((n,s)=>n+paid(s.id),0);
+ const balance=Math.max(0,approvedAmount-paidAmount);
+ const body=rows.map(s=>`<tr><td>${esc(dateBR(s.work_date))}</td><td>${esc(s.caregiver_name||'')}</td><td>${esc(patients.find(p=>p.id===s.patient_id)?.name||'')}</td><td>${esc(s.environment||'')}</td><td>${esc(s.shift_hours)}h</td><td>${esc(statusLabel(s.status))}</td><td class="number">${s.status==='approved'?money(total(s)):'—'}</td><td class="number">${s.status==='approved'?money(paid(s.id)):'—'}</td><td class="number">${s.status==='approved'?money(Math.max(0,total(s)-paid(s.id))):'—'}</td></tr>`).join('');
+ const title='CuidaGeri — Detalhamento do período';
+ const report=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>
+ @page{size:A4 landscape;margin:13mm 12mm}*{box-sizing:border-box}body{font:11px Arial,Helvetica,sans-serif;color:#17324b;margin:0;background:#fff}header{border-bottom:3px solid #1e527e;padding-bottom:10px;margin-bottom:13px}header strong{font-size:19px;color:#174573}h1{font-size:17px;margin:9px 0 7px;color:#17324b}.meta{display:flex;flex-wrap:wrap;gap:8px 22px;color:#4e6577;margin:9px 0 14px}.summary{display:flex;gap:10px;margin-bottom:16px}.summary div{border:1px solid #d6e2ec;border-radius:6px;padding:9px 11px;flex:1}.summary small{display:block;color:#587086;margin-bottom:5px}.summary strong{font-size:14px}table{border-collapse:collapse;width:100%;font-size:9.5px}thead{display:table-header-group}th{background:#1d4e7b;color:white;text-align:left}th,td{padding:7px 5px;border-bottom:1px solid #dfe7ee;vertical-align:top}tr:nth-child(even) td{background:#f3f7fb}tr{break-inside:avoid;page-break-inside:avoid}.number{white-space:nowrap;text-align:right}th:nth-last-child(-n+3){text-align:right}.empty{padding:20px 0;color:#667}footer{font-size:9px;color:#63768b;margin-top:12px}.toolbar{margin-bottom:15px;background:#f2f6fa;padding:12px;border-radius:6px}.toolbar button{background:#1e527e;color:white;border:0;padding:10px 16px;border-radius:6px;cursor:pointer;font-weight:bold}.toolbar span{padding-left:10px;color:#52687e}@media print{.toolbar{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+ </style></head><body><div class="toolbar"><button onclick="window.print()">Imprimir / Salvar como PDF</button><span>Escolha "Salvar como PDF" no destino da impressão.</span></div><header><strong>CuidaGeri</strong><div>Gestão de cuidados, escalas e pagamentos</div></header><h1>Detalhamento do período</h1><div class="meta"><span><b>De:</b> ${esc(dateBR(start))}</span><span><b>Até:</b> ${esc(dateBR(end))}</span><span><b>Cuidadora:</b> ${esc(caregiver||'Todas as cuidadoras')}</span><span><b>Paciente:</b> ${esc(selectedPatient)}</span></div><section class="summary"><div><small>Plantões no detalhamento</small><strong>${rows.length}</strong></div><div><small>Valor aprovado</small><strong>${money(approvedAmount)}</strong></div><div><small>Pago</small><strong>${money(paidAmount)}</strong></div><div><small>Saldo</small><strong>${money(balance)}</strong></div></section>${rows.length?`<table><thead><tr><th>Data</th><th>Cuidadora</th><th>Paciente</th><th>Ambiente</th><th>Horas</th><th>Status</th><th>Aprovado</th><th>Pago</th><th>Saldo</th></tr></thead><tbody>${body}</tbody></table>`:'<p class="empty">Nenhum plantão para os filtros selecionados.</p>'}<footer>Relatório emitido a partir dos registros exibidos no CuidaGeri. Plantões rejeitados são mantidos somente no Histórico geral.</footer></body></html>`;
+ const popup=window.open('','_blank');
+ if(!popup)return notice('O navegador bloqueou a nova janela. Permita pop-ups para gerar o PDF.');
+ popup.document.open();popup.document.write(report);popup.document.close();
+ popup.focus();
+}
+$('dashboardExportPdf').addEventListener('click',exportDashboardDetailsPdf);
+
+
 // Instalação PWA: o navegador decide quando permite apresentar o convite.
 let pendingInstallPrompt=null;
 window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();pendingInstallPrompt=event;});
