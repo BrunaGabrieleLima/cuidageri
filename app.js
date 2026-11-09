@@ -188,7 +188,31 @@ async function boot(){
    $('monthHistory').hidden=true;$('monthHistory').innerHTML='';await refresh();if(isAdmin())await loadOrg4f();else await acceptOrgInvite4f();
  }
 }
-function showTab(id){if(id!=='closeMonth'){$('monthHistory').innerHTML='';$('monthHistory').hidden=true;}document.querySelectorAll('.pane').forEach(el=>el.hidden=el.id!==id);document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===id))}
+// Cadastro pessoal: consulta somente o proprio perfil e as organizacoes do usuario autenticado.
+async function renderMyProfile(){
+ if(!session?.user||!profile||isAdmin())return;
+ const panel=$('myProfileDetails');
+ if(!panel)return;
+ panel.innerHTML='<p class="muted">Consultando seus dados...</p>';
+ const {data:current,error:profileError}=await db.from('care_profiles')
+  .select('display_name,phone_e164,role,approved,access_removed_at')
+  .eq('id',session.user.id).single();
+ if(profileError)throw profileError;
+ const {data:orgs,error:orgError}=await db.rpc('care_my_organizations_v4');
+ if(orgError)throw orgError;
+ const organizations=(orgs||[]).filter(o=>o.organization_role==='caregiver');
+ const orgNames=organizations.map(o=>o.organization_name).filter(Boolean);
+ const email=session.user.email||'E-mail não disponível';
+ const details=[
+  ['Nome completo',current.display_name||'Não informado'],
+  ['E-mail da conta Google',email],
+  ['WhatsApp cadastrado',current.phone_e164||'Não informado'],
+  ['Família vinculada',orgNames.length?orgNames.join(' • '):'Nenhuma família vinculada']
+ ];
+ panel.innerHTML=details.map(([label,value])=>`<div class="myProfileField"><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`).join('')+
+ '<p class="myProfileNote">Informações somente para consulta. Para alterar o cadastro ou o vínculo familiar, entre em contato com a administração.</p>';
+}
+function showTab(id){if(id!=='closeMonth'){$('monthHistory').innerHTML='';$('monthHistory').hidden=true;}document.querySelectorAll('.pane').forEach(el=>el.hidden=el.id!==id);document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===id));if(id==='myProfile')renderMyProfile().catch(fail)}
 if(!ok){$('setup').hidden=false;$('auth').hidden=true}else{
  db=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:'cuidageri-auth'}});
  db.auth.onAuthStateChange(()=>{setTimeout(()=>boot().catch(fail),0);});
