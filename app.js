@@ -7,7 +7,7 @@ let db,profile,session,patients=[],shifts=[],payments=[],profiles=[],invitedPeop
 let recoveringPassword=false,confirmationEmail="",signupCaptchaWidget=null;
 const isAdmin=()=>profile?.role==='admin'&&profile?.approved===true&&!profile?.access_removed_at;
 const inviteToken=()=>new URLSearchParams(location.search).get('convite')||'';
-const googleLogin=async()=>{const {error}=await db.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:'select_account'}}});if(error)throw error;};
+const googleLogin=async()=>{const orgToken=new URLSearchParams(location.search).get('org_invite');if(orgToken)sessionStorage.setItem('cg-org-invite-pending',orgToken);const {error}=await db.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:'select_account'}}});if(error)throw error;};
 const phoneBR=s=>{let n=String(s||'').replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);if(!n.startsWith('55'))n='55'+n;return /^55\d{10,11}$/.test(n)?'+'+n:null};
 // Identificador técnico do Auth: não é um e-mail pessoal e não deve receber mensagens.
 const caregiverAuthEmail=phone=>phone.replace(/\D/g,'')+'@accounts.cuidageri.example.com';
@@ -94,6 +94,66 @@ $('accessList').innerHTML=profiles.filter(p=>!p.access_removed_at).map(p=>`<div 
 $('removedAccessList').innerHTML=profiles.filter(p=>p.access_removed_at).map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name||'(sem nome)')}</span><span class="pill rejected">Acesso removido</span></div><div class="recordMeta">Histórico preservado · ${esc(p.access_removed_at?.slice(0,10)||'')}</div><div class="rowActions"><button class="light small" data-action="restore-access" data-id="${esc(p.id)}">Restaurar acesso</button></div></div>`).join('')||'<p class="muted">Nenhum acesso removido.</p>';
 $('invitedList').innerHTML=invitedPeople.filter(p=>p.status==='pending').map(p=>`<div class="record"><div class="recordHead"><span>${esc(p.display_name)}</span><span class="pill">Aguardando ativação</span></div><div class="recordMeta">${esc(p.phone_e164)} · Válido até ${esc(new Date(p.expires_at).toLocaleString('pt-BR'))}</div><div class="rowActions"><button class="small" data-action="reissue-invite" data-id="${esc(p.id)}">Gerar novo link</button><button class="dangerBtn small" data-action="cancel-invite" data-id="${esc(p.id)}">Cancelar convite</button></div></div>`).join('')||'<p class="muted">Nenhum convite pendente.</p>';
 }
+// 4F: convite para vinculo organizacional, sem senha e sem acesso automatico.
+let org4f=null;
+const orgInviteToken4f=()=>new URLSearchParams(location.search).get('org_invite')||sessionStorage.getItem('cg-org-invite-pending')||'';
+async function rpc4f(name,args){const {data,error}=await db.rpc(name,args);if(error)throw error;return data;}
+async function loadOrg4f(){
+ if(!isAdmin()||!$('org4fMembers'))return;
+ const orgs=await rpc4f('care_my_organizations_v4');
+ const pilot=(orgs||[]).find(o=>['owner','manager'].includes(o.organization_role)&&String(o.organization_name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()==='familia do sr. reginaldo');
+ // A etapa atual nao habilita familias externas.
+ if(!pilot){$('org4fArea').hidden=true;return;}
+ org4f=pilot.id||pilot.organization_id;
+ if(!org4f){$('org4fArea').hidden=true;return;}
+ $('org4fArea').hidden=false;
+ const [members,invites]=await Promise.all([
+   rpc4f('care_org_members_list_v4f',{p_organization_id:org4f}),
+   rpc4f('care_org_invite_list_v4f',{p_organization_id:org4f})
+ ]);
+ $('org4fMembers').innerHTML=(members||[]).map(m=>`<div class="record"><div class="recordHead"><span>${esc(m.display_name||'Sem nome')}</span><span class="pill">${esc(m.organization_role)}</span></div>${m.organization_role==='caregiver'?`<div class="rowActions"><button type="button" class="small light" data-unlink="${esc(m.user_id)}" data-person="${esc(m.display_name)}">Desvincular da família</button></div>`:''}</div>`).join('')||'<p>Sem membros.</p>';
+ $('org4fInvites').innerHTML=(invites||[]).filter(x=>x.status==='pending').map(i=>`<div class="record"><div class="recordHead"><span>${esc(i.invited_email)}</span><span class="pill">${new Date(i.expires_at)<new Date()?'Expirado':'Aguardando aceite'}</span></div><div class="rowActions"><button type="button" class="small light" data-cancel="${esc(i.id)}">Cancelar convite</button></div></div>`).join('')||'<p>Nenhum convite pendente.</p>';
+}
+async function acceptOrgInvite4f(){
+ const token=orgInviteToken4f();
+ if(!token||!session||!profile||profile.role!=='caregiver'||!profile.approved||profile.access_removed_at||!profile.phone_e164)return;
+ if(sessionStorage.getItem('cg-org-invite-last')===token)return;
+ // Aceite informado: nunca vincular conta automaticamente so por visitar link.
+ const email=session.user.email||'';
+ if(!confirm(`Convite de organização CuidaGeri para a conta Google ${email}. Deseja aceitar o vínculo e compartilhar seus plantões futuros com essa família?`)){
+   sessionStorage.setItem('cg-org-invite-last',token);sessionStorage.removeItem('cg-org-invite-pending');return;
+ }
+ const name=await rpc4f('care_org_invite_accept_v4f',{p_token:token});
+ sessionStorage.setItem('cg-org-invite-last',token);
+ sessionStorage.removeItem('cg-org-invite-pending');
+ history.replaceState(null,'',location.pathname+location.search.replace(/([?&])org_invite=[^&]*&?/,'$1').replace(/[?&]$/,''));
+ notice(`Vínculo confirmado com ${name}.`);
+}
+$('org4fInviteForm').addEventListener('submit',working(async()=>{
+ if(!org4f||!isAdmin())throw Error('Organização não carregada.');
+ const email=$('org4fEmail').value.trim().toLowerCase();
+ const token=await rpc4f('care_org_invite_create_v4f',{p_organization_id:org4f,p_email:email});
+ const url=new URL(location.origin+location.pathname);url.searchParams.set('org_invite',token);
+ $('org4fLink').value=url.toString();$('org4fGenerated').hidden=false;
+ $('org4fInviteForm').reset();await loadOrg4f();
+ notice('Convite Google criado. Copie e envie somente à destinatária.');
+}));
+$('org4fCopy').addEventListener('click',working(async()=>{
+ const text=$('org4fLink').value;
+ if(!text)throw Error('Gere um convite antes.');
+ await navigator.clipboard.writeText(text);notice('Link copiado.');
+}));
+$('org4fMembers').addEventListener('click',working(async ev=>{
+ const b=ev.target.closest('[data-unlink]');if(!b||!org4f)return;
+ if(!confirm(`Desvincular ${b.dataset.person||'esta cuidadora'} da família? O histórico permanece no banco, mas a cuidadora perde acesso aos registros dessa família.`))return;
+ await rpc4f('care_org_caregiver_unlink_v4f',{p_organization_id:org4f,p_user_id:b.dataset.unlink});
+ await loadOrg4f();notice('Vínculo removido; histórico preservado.');
+}));
+$('org4fInvites').addEventListener('click',working(async ev=>{
+ const b=ev.target.closest('[data-cancel]');if(!b)return;
+ if(!confirm('Cancelar este convite?'))return;
+ await rpc4f('care_org_invite_cancel_v4f',{p_invite_id:b.dataset.cancel});await loadOrg4f();
+}));
 async function boot(){
  const {data,error}=await db.auth.getSession();if(error)throw error;session=data.session;
  $('setup').hidden=true;
@@ -125,7 +185,7 @@ async function boot(){
    document.querySelectorAll('.adminOnly').forEach(el=>el.hidden=p.role!=='admin');
    document.querySelectorAll('.caregiverOnly').forEach(el=>el.hidden=p.role==='admin');
    showTab(p.role==='admin'?'dashboard':'new');
-   $('monthHistory').hidden=true;$('monthHistory').innerHTML='';await refresh();
+   $('monthHistory').hidden=true;$('monthHistory').innerHTML='';await refresh();if(isAdmin())await loadOrg4f();else await acceptOrgInvite4f();
  }
 }
 function showTab(id){if(id!=='closeMonth'){$('monthHistory').innerHTML='';$('monthHistory').hidden=true;}document.querySelectorAll('.pane').forEach(el=>el.hidden=el.id!==id);document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===id))}
