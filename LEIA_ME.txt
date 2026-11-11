@@ -1,16 +1,9 @@
-CUIDAGERI - Etapa 4M - Integracao baseada no index.html ENVIADO PELO USUARIO
+CuidaGeri - Etapa 4M: correcao de sessao Google
 
-Arquivos a publicar no GitHub BrunaGabrieleLima/cuidageri:
-- index.html: substitua o arquivo de mesmo nome. Este arquivo e o index.html enviado pelo usuario com apenas a chamada do novo modulo adicionada antes de </body>.
-- access-requests-v4m.js: adicione este arquivo novo na raiz, ao lado de app.js.
+CAUSA: app.js usa storageKey cuidageri-auth; o modulo de solicitacoes usava a chave padrao, nao encontrando a sessao da conta.
 
-NAO substitua app.js, style.css, config.js ou outros arquivos.
-NAO execute SQL novo: requer as RPCs v4l e v4k ja instaladas.
+PUBLICACAO: substituir index.html e access-requests-v4m.js no repositorio BrunaGabrieleLima/cuidageri. Nao modificar app.js, config.js, Supabase ou demais arquivos.
 
-APOS PUBLICAR:
-1. Atualize com Ctrl+Shift+R.
-2. Acesse com uma cuidadora SEM vinculo e entre em Meu cadastro, solicite acesso.
-3. Acesse com a administradora e abra Acessos, confira o pedido, aprove ou rejeite.
-4. Verifique que sem aprovacao a cuidadora nao visualiza pacientes.
+TESTE: atualizar com Ctrl+Shift+R, entrar como administradora, abrir Acessos. A secao Solicitacoes de acesso a familia deve aparecer. Se houver erro, enviar texto exibido na propria secao.
 
-Nao houve publicacao remota ou teste end-to-end no Supabase.
+Nenhum banco de dados foi alterado.

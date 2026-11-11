@@ -6,7 +6,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const cfg = window.APP_CONFIG || {};
 const valid = cfg.supabaseUrl?.startsWith('https://') && cfg.supabaseAnonKey && !cfg.supabaseAnonKey.startsWith('COLE_');
 const db = valid ? createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'cuidageri-auth' },
 }) : null;
 const PILOT_SLUG = 'familia-sr-reginaldo';
 let currentUserId = null;
@@ -45,7 +45,9 @@ function ensureUI() {
     const msg = node('p', '', 'muted'); msg.id = 'access4mMessage'; msg.setAttribute('role', 'status'); caregiver.append(msg);
     caregiver.append(node('h3', 'Minhas solicitações'));
     const history = node('div'); history.id = 'access4mMyList'; caregiver.append(history);
-    ($('myProfile') || $('new'))?.append(caregiver);
+    const mount = $('access4mCaregiverMount');
+    if (mount) mount.replaceChildren(caregiver);
+    else ($('myProfile') || $('new'))?.append(caregiver);
     form.addEventListener('submit', handleRequest);
   }
   if (!$('access4mAdmin')) {
@@ -58,7 +60,9 @@ function ensureUI() {
     admin.append(refresh);
     const msg = node('p', '', 'muted'); msg.id = 'access4mAdminMessage'; msg.setAttribute('role', 'status'); admin.append(msg);
     const list = node('div'); list.id='access4mAdminList'; admin.append(list);
-    $('access')?.querySelector('.card')?.append(admin);
+    const mount = $('access4mAdminMount');
+    if (mount) mount.replaceChildren(admin);
+    else $('access')?.querySelector('.card')?.append(admin);
   }
   if (!$('access4mStyles')) {
     const style = node('style'); style.id = 'access4mStyles';
@@ -185,13 +189,18 @@ async function update(force=false) {
     currentUserId=id;
     if (p.role === 'admin') {
       $('access4mCaregiver').hidden = true;
-      const {data:orgs}=await db.rpc('care_org_choices_v4k');
+      $('access4mAdmin').hidden = false;
+      $('access4mAdminMessage').textContent = 'Consultando solicitações...';
+      const {data:orgs, error:orgError}=await db.rpc('care_org_choices_v4k');
+      if (orgError) throw orgError;
       const org=(orgs||[]).find(o=>o.organization_role==='owner' && o.organization_name?.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes('reginaldo'));
       currentOrgId=org?.organization_id||null;
-      $('access4mAdmin').hidden = !currentOrgId;
       if (currentOrgId) {
+        $('access4mAdminMessage').textContent = ''; 
         const items=await call('care_org_access_requests_list_v4l',{p_organization_id:currentOrgId});
         if (thisRefresh===refreshId) renderAdmin(items||[]);
+      } else {
+        $('access4mAdminMessage').textContent = 'Não foi possível identificar a família administrada por esta conta. Confira seu vínculo de proprietária.';
       }
     } else if (p.role==='caregiver') {
       $('access4mAdmin').hidden=true;
@@ -206,8 +215,9 @@ async function update(force=false) {
       renderMyRequests(items||[],linked);
     }
   } catch(err) {
-    const box=$('access4mAdmin')?.hidden ? $('access4mMessage') : $('access4mAdminMessage');
-    if(box) box.textContent=`Não foi possível consultar solicitações: ${alertText(err)}`;
+    const adminVisible = $('access4mAdmin') && !$('access4mAdmin').hidden;
+    const box = adminVisible ? $('access4mAdminMessage') : $('access4mMessage');
+    if (box) box.textContent = `Não foi possível consultar solicitações: ${alertText(err)}`;
   }
 }
 
