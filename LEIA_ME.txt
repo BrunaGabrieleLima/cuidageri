@@ -1,17 +1,10 @@
-CUIDAGERI - ETAPA 4O - AJUSTES DE PLANTOES
+CuidaGeri - correcao de solicitacao de ajuste por ID unico
 
-1. Faca backup do banco Supabase CuidaGeri.
-2. Execute 24_FLUXO_AJUSTES.sql completo no Supabase SQL Editor.
-3. Confirme as quatro funcoes listadas com anon=false, autenticado=true.
-4. No GitHub BrunaGabrieleLima/cuidageri, substitua apenas index.html e adicione shift-adjustments-v4o.js.
-   Nao substitua app.js nem os outros arquivos JS existentes.
-5. Publique no Vercel. Recarregue e teste com conta administradora e cuidadora.
-6. No Historico geral, clique Solicitar ajuste em um plantao unico. A cuidadora responde em Meus plantoes.
-7. Voce recebe a resposta em Historico geral > Solicitacoes de ajuste e escolhe Aprovar, Rejeitar ou Solicitar novo ajuste.
-8. Ao aprovar, CONFIRME os quatro valores financeiros; nao deixe valor avulso indevido.
+1. No repositorio BrunaGabrieleLima/cuidageri, substitua app.js por este arquivo.
+2. Substitua shift-adjustments-v4o.js por este arquivo.
+3. Nao substitua index.html, config.js nem qualquer outro arquivo.
+4. Apos o deploy Vercel, force a atualizacao do navegador (Ctrl+Shift+R).
+5. Verifique o historico de Vandise em 12/11: os dois lancamentos devem ter botoes independentes.
+6. Teste envio de ajuste apenas em registro de teste, evitando pagamentos reais.
 
-SEGURANCA FINANCEIRA: enquanto o ajuste estiver solicitado/enviado, novos pagamentos do plantao sao bloqueados no banco. O dashboard existente pode continuar exibindo o valor antigo em 'a pagar' ate a aprovacao. NAO pague esse item antes de corrigir. Plantao com pagamento ja registrado nao entra no fluxo: exige conciliacao separada.
-
-IMPORTANTE: Esta etapa foi preparada para o piloto com UMA organizacao e conta administradora global. Nao habilitar clientes externos. Os testes de execucao no Supabase e app publicado nao foram realizados aqui.
-
-O app.js mais recente nao foi fornecido: os botoes no Historico sao incluidos em modo de compatibilidade, somente se o registro puder ser identificado inequivocamente pela data, cuidadora, paciente e jornada. Nos demais casos nao aparece o botao, para evitar alterar o plantao errado.
+Nao precisa de SQL. A correcao nao modifica banco nem financeiro.

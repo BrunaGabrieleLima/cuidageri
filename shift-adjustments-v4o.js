@@ -39,18 +39,19 @@ function attachHistoryButtons(){
  const host=$('historyList');if(!host||!admin)return;
  const cards=[...host.children].filter(x=>x.classList.contains('record'));
  const openIds=new Set(requests.filter(r=>['requested','submitted'].includes(r.status)).map(r=>r.shift_id));
- for(const card of cards){if(card.dataset.cgAdjBound)continue;
-  // O app legado não expõe IDs no HTML: só adicionamos botão em correspondência inequívoca.
-  const head=card.querySelector('.recordHead');const meta=card.querySelector('.recordMeta');if(!head||!meta)continue;
-  const line=head.textContent||'';const date=line.match(/\d{4}-\d{2}-\d{2}/)?.[0];
-  const matches=all.filter(s=>s.work_date===date && line.includes(s.caregiver_name)
-    && meta.textContent.includes((patients.find(p=>p.id===s.patient_id)||{}).name||'\u0000')
-    && meta.textContent.includes(`${s.shift_hours}h`));
-  if(matches.length!==1)continue;
-  card.dataset.cgAdjBound='1';const shift=matches[0];
+ const shiftsById=new Map(all.map(s=>[String(s.id),s]));
+ for(const card of cards){
+  if(card.dataset.cgAdjBound)continue;
+  // Identifica o plantao pelo UUID exato inserido pelo app.js, nunca por nome/data/horas.
+  const shiftId=card.dataset.shiftId;
+  if(!shiftId)continue;
+  const shift=shiftsById.get(shiftId);
+  if(!shift)continue;
+  card.dataset.cgAdjBound='1';
   const actions=document.createElement('div');actions.className='rowActions';
   if(openIds.has(shift.id))actions.append(text('Há um ajuste em andamento para este plantão.'));
-  else actions.append(safeButtonRequest(shift));card.append(actions);
+  else actions.append(safeButtonRequest(shift));
+  card.append(actions);
  }
 }
 function renderAdmin(){
