@@ -1,9 +1,9 @@
-CuidaGeri - Etapa 4M: correcao de sessao Google
+CuidaGeri - aba Meus plantoes
 
-CAUSA: app.js usa storageKey cuidageri-auth; o modulo de solicitacoes usava a chave padrao, nao encontrando a sessao da conta.
-
-PUBLICACAO: substituir index.html e access-requests-v4m.js no repositorio BrunaGabrieleLima/cuidageri. Nao modificar app.js, config.js, Supabase ou demais arquivos.
-
-TESTE: atualizar com Ctrl+Shift+R, entrar como administradora, abrir Acessos. A secao Solicitacoes de acesso a familia deve aparecer. Se houver erro, enviar texto exibido na propria secao.
-
-Nenhum banco de dados foi alterado.
+1. No repositorio BrunaGabrieleLima/cuidageri, substitua somente index.html e adicione my-shifts-v4n.js na mesma pasta do app.js.
+2. NAO substitua app.js, config.js, access-requests-v4m.js ou style.css.
+3. A nova aba e exclusiva de cuidadoras, consulta somente o mes corrente, e nao mostra valores.
+4. Nao ha bloqueio real de screenshots na web; a marca-dagua reduz a facilidade de compartilhar.
+5. Nao exige SQL. As politicas RLS existentes continuam sendo as responsaveis pelo isolamento.
+6. Teste com uma cuidadora e confirme que os dados atuais aparecem e que valores nao sao mostrados.
+7. Se o index.html publicado for diferente do HTML da Etapa 4M usada como base, compare antes de substituir.
