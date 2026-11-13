@@ -1,9 +1,17 @@
-CuidaGeri - aba Meus plantoes
+CUIDAGERI - ETAPA 4O - AJUSTES DE PLANTOES
 
-1. No repositorio BrunaGabrieleLima/cuidageri, substitua somente index.html e adicione my-shifts-v4n.js na mesma pasta do app.js.
-2. NAO substitua app.js, config.js, access-requests-v4m.js ou style.css.
-3. A nova aba e exclusiva de cuidadoras, consulta somente o mes corrente, e nao mostra valores.
-4. Nao ha bloqueio real de screenshots na web; a marca-dagua reduz a facilidade de compartilhar.
-5. Nao exige SQL. As politicas RLS existentes continuam sendo as responsaveis pelo isolamento.
-6. Teste com uma cuidadora e confirme que os dados atuais aparecem e que valores nao sao mostrados.
-7. Se o index.html publicado for diferente do HTML da Etapa 4M usada como base, compare antes de substituir.
+1. Faca backup do banco Supabase CuidaGeri.
+2. Execute 24_FLUXO_AJUSTES.sql completo no Supabase SQL Editor.
+3. Confirme as quatro funcoes listadas com anon=false, autenticado=true.
+4. No GitHub BrunaGabrieleLima/cuidageri, substitua apenas index.html e adicione shift-adjustments-v4o.js.
+   Nao substitua app.js nem os outros arquivos JS existentes.
+5. Publique no Vercel. Recarregue e teste com conta administradora e cuidadora.
+6. No Historico geral, clique Solicitar ajuste em um plantao unico. A cuidadora responde em Meus plantoes.
+7. Voce recebe a resposta em Historico geral > Solicitacoes de ajuste e escolhe Aprovar, Rejeitar ou Solicitar novo ajuste.
+8. Ao aprovar, CONFIRME os quatro valores financeiros; nao deixe valor avulso indevido.
+
+SEGURANCA FINANCEIRA: enquanto o ajuste estiver solicitado/enviado, novos pagamentos do plantao sao bloqueados no banco. O dashboard existente pode continuar exibindo o valor antigo em 'a pagar' ate a aprovacao. NAO pague esse item antes de corrigir. Plantao com pagamento ja registrado nao entra no fluxo: exige conciliacao separada.
+
+IMPORTANTE: Esta etapa foi preparada para o piloto com UMA organizacao e conta administradora global. Nao habilitar clientes externos. Os testes de execucao no Supabase e app publicado nao foram realizados aqui.
+
+O app.js mais recente nao foi fornecido: os botoes no Historico sao incluidos em modo de compatibilidade, somente se o registro puder ser identificado inequivocamente pela data, cuidadora, paciente e jornada. Nos demais casos nao aparece o botao, para evitar alterar o plantao errado.
